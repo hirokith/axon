@@ -110,7 +110,7 @@ export class AcpClient extends EventEmitter {
 
   async initialize(): Promise<any> {
     return this.sendRequest('initialize', {
-      clientInfo: { name: 'ACP Desktop Client', version: '1.0.0' },
+      clientInfo: { name: 'Acorn', version: '1.0.0' },
       protocolVersion: 1,
       capabilities: {
         prompts: { text: true, embeddedContext: true }

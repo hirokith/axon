@@ -91,7 +91,7 @@ function App(): JSX.Element {
         </div>
         <div className="flex-1" />
         <ThemeToggle />
-        <span className="text-text-muted text-xs pr-3 no-drag">ACP Client</span>
+        <span className="text-text-muted text-xs pr-3 no-drag">Acorn</span>
       </div>
 
       {/* Main content */}
