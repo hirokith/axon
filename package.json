@@ -5,20 +5,59 @@
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
-    "preview": "electron-vite preview"
+    "preview": "electron-vite preview",
+    "pack": "electron-vite build && electron-builder --dir",
+    "dist": "electron-vite build && electron-builder",
+    "dist:mac": "electron-vite build && electron-builder --mac",
+    "dist:win": "electron-vite build && electron-builder --win",
+    "dist:linux": "electron-vite build && electron-builder --linux"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/hirokith/acorn.git"
   },
-  "keywords": [],
+  "keywords": ["acp", "agent", "electron", "desktop", "ai"],
   "author": "",
   "license": "ISC",
   "bugs": {
     "url": "https://github.com/hirokith/acorn/issues"
   },
   "homepage": "https://github.com/hirokith/acorn#readme",
-  "description": "",
+  "description": "A desktop client for ACP-powered AI Agents",
+  "build": {
+    "appId": "com.acorn.app",
+    "productName": "Acorn",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "out/**/*",
+      "!node_modules/**/*"
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [
+        { "target": "dmg", "arch": ["x64", "arm64"] },
+        { "target": "zip", "arch": ["x64", "arm64"] }
+      ]
+    },
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "linux": {
+      "category": "Development",
+      "target": [
+        { "target": "AppImage", "arch": ["x64"] },
+        { "target": "deb", "arch": ["x64"] }
+      ]
+    }
+  },
   "devDependencies": {
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
@@ -29,6 +68,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.2.0",
     "electron": "^42.0.0",
+    "electron-builder": "^26.0.12",
     "electron-vite": "^5.0.0",
     "tailwindcss": "^4.2.4",
     "typescript": "^6.0.3",
