@@ -115,7 +115,7 @@ That's it. You're running. 🎉
 | | Technology |
 |---|-----------|
 | 🖥️ Framework | Electron 42 |
-| ⚛️ Frontend | React 18 + TypeScript |
+| ⚛️ Frontend | React 19 + TypeScript |
 | ⚡ Build | electron-vite + Vite 7 |
 | 🎨 Styling | Tailwind CSS v4 |
 | 🗃️ State | Zustand (persisted) |

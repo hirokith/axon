@@ -25,6 +25,8 @@ export default function LogPanel() {
           if (entries && entries.length > 0) {
             loadRawLogs(entries)
           }
+        }).catch((err: any) => {
+          console.error('[LogPanel] Failed to load log entries:', err)
         })
       }
     }
@@ -91,6 +93,7 @@ export default function LogPanel() {
               <option value="tool_call">Tools</option>
               <option value="thought">Thoughts</option>
               <option value="message">Messages</option>
+              <option value="plan">Plan</option>
               <option value="other">Other</option>
             </select>
           )}

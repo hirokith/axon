@@ -11,7 +11,6 @@ export default function Chat() {
   const connectedAgentName = useChatStore((s) => s.connectedAgentName)
   const setConnected = useChatStore((s) => s.setConnected)
   const addSession = useChatStore((s) => s.addSession)
-  const clearSessions = useChatStore((s) => s.clearSessions)
   const sessions = useChatStore((s) => s.sessions)
 
   const { agents, fetchAgents } = useAgentConfigStore()
@@ -64,7 +63,6 @@ export default function Chat() {
       console.error('disconnect error:', e)
     }
     setConnected(false)
-    clearSessions()
   }
 
   return (

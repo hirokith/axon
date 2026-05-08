@@ -100,7 +100,11 @@ function setupAcpHandlers(): void {
       // Respond with success and notify renderer that turn is done
       console.log('[ACP incoming-request]', msg.method)
       if (transport) {
-        transport.send({ jsonrpc: '2.0', id: msg.id, result: {} })
+        try {
+          transport.send({ jsonrpc: '2.0', id: msg.id, result: {} })
+        } catch (err) {
+          console.error('[ACP] Failed to send response:', err)
+        }
       }
       sendToRenderer('acp:turn-complete', {
         sessionId: msg.params?.sessionId,
