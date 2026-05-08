@@ -41,6 +41,7 @@ export class StdioTransport extends EventEmitter {
     })
 
     this.process.on('close', (code: number | null) => {
+      this.flushBuffer()
       this.process = null
       this.emit('close', code)
     })
@@ -58,6 +59,18 @@ export class StdioTransport extends EventEmitter {
       } catch (err) {
         this.emit('error', new Error(`Failed to parse message: ${line}`))
       }
+    }
+  }
+
+  private flushBuffer(): void {
+    const remaining = this.buffer.trim()
+    this.buffer = ''
+    if (remaining.length === 0) return
+    try {
+      const msg = decodeMessage(remaining)
+      this.emit('message', msg)
+    } catch (err) {
+      this.emit('error', new Error(`Failed to parse message: ${remaining}`))
     }
   }
 

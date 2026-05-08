@@ -11,10 +11,10 @@ export default function PermissionDialog() {
   const handleOption = async (optionId: string) => {
     try {
       await (window as any).acpApi.respondPermission(req.id, optionId)
+      removePermissionRequest(req.id)
     } catch (e) {
       console.error('respondPermission error:', e)
     }
-    removePermissionRequest(req.id)
   }
 
   return (

@@ -148,13 +148,13 @@ export function useAcpEvents(): void {
               toolCallId: update.toolCallId || '',
               title: update.title || '',
               kind: update.kind || 'other',
-              status: (update.status as any) || 'pending',
+              status: update.status === 'running' ? 'in_progress' : ((update.status as any) || 'pending'),
               rawInput: update.rawInput,
             }, sid)
             break
           case 'tool_call_update':
             updateToolCall(update.toolCallId || '', {
-              ...(update.status ? { status: update.status as any } : {}),
+              ...(update.status ? { status: update.status === 'running' ? 'in_progress' : update.status as any } : {}),
               ...(update.rawInput ? { rawInput: update.rawInput } : {}),
               ...(update.rawOutput ? { rawOutput: update.rawOutput } : {}),
               ...(update.content ? { content: update.content } : {}),

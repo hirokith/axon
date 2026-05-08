@@ -31,8 +31,7 @@
       "output": "release"
     },
     "files": [
-      "out/**/*",
-      "!node_modules/**/*"
+      "out/**/*"
     ],
     "mac": {
       "category": "public.app-category.developer-tools",

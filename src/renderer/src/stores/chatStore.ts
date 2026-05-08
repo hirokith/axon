@@ -227,7 +227,7 @@ export const useChatStore = create<ChatState>()(
           permissionRequests: state.permissionRequests.filter((r) => r.id !== id),
         })),
 
-      clearSessions: () => set({ sessions: [], activeSessionId: null, sessionCounter: 0 }),
+      clearSessions: () => set({ sessions: [], activeSessionId: null, sessionCounter: 0, permissionRequests: [] }),
     }),
     {
       name: 'acp-chat-history',

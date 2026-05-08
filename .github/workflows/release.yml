@@ -37,7 +37,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Build & Package
-        run: pnpm dist:${{ matrix.platform }}
+        run: pnpm dist:${{ matrix.platform }} -- --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

@@ -13,6 +13,7 @@ export default function ShikiCodeBlock({ label, content, maxHeight = 250 }: Shik
 
   useEffect(() => {
     let cancelled = false
+    setHtml('')
     const lang = detectLanguage(content, label)
     
     getHighlighter().then((highlighter) => {

@@ -143,7 +143,16 @@ Acorn speaks [ACP](https://agentclientprotocol.com) natively over stdio:
 pnpm build
 ```
 
-Binaries land in `dist/`. Ship it! 🚢
+Compiled output lands in `out/`. To package distributable binaries:
+
+```bash
+pnpm dist        # all platforms
+pnpm dist:mac    # macOS (.dmg, .zip)
+pnpm dist:win    # Windows (.exe)
+pnpm dist:linux  # Linux (.AppImage, .deb)
+```
+
+Packaged binaries land in `release/`. Ship it! 🚢
 
 ---
 

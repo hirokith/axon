@@ -7,6 +7,9 @@ export function getHighlighter(): Promise<Highlighter> {
     highlighterPromise = createHighlighter({
       themes: ['github-dark'],
       langs: ['json', 'javascript', 'typescript', 'tsx', 'jsx', 'html', 'css', 'python', 'bash', 'markdown', 'yaml', 'toml', 'rust', 'go', 'java', 'plaintext'],
+    }).catch((err) => {
+      highlighterPromise = null
+      throw err
     })
   }
   return highlighterPromise

@@ -46,7 +46,7 @@ function formatOutput(data: any): string {
   if (Array.isArray(data)) {
     return data.map((item) => {
       if (typeof item === 'string') return item.replace(/^[ \t]*\d+→/gm, '')
-      if (item.type === 'text' && item.text) return item.text.replace(/^[ \t]*\d+→/gm, '')
+      if (item != null && typeof item === 'object' && item.type === 'text' && item.text) return item.text.replace(/^[ \t]*\d+→/gm, '')
       return JSON.stringify(item, null, 2)
     }).join('\n')
   }

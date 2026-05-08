@@ -9,7 +9,6 @@ import {
   isNotification
 } from './jsonrpc'
 import { StdioTransport } from './transport'
-import { PermissionOutcome } from './types'
 
 export class AcpClient extends EventEmitter {
   private nextId: number = 1
@@ -141,18 +140,23 @@ export class AcpClient extends EventEmitter {
       resolve: () => {},
       reject: (err: any) => this.emit('prompt-error', err)
     })
-    this.transport.send(request)
+    try {
+      this.transport.send(request)
+    } catch (err) {
+      this.pendingRequests.delete(id)
+      this.emit('prompt-error', err)
+    }
   }
 
   cancelPrompt(sessionId: string): void {
     this.sendNotification('session/cancel', { sessionId })
   }
 
-  respondPermission(id: number | string, outcome: PermissionOutcome): void {
+  respondPermission(id: number | string, optionId: string): void {
     const response: JsonRpcResponse = {
       jsonrpc: '2.0',
       id,
-      result: { outcome }
+      result: { outcome: 'selected', optionId }
     }
     this.transport.send(response)
   }

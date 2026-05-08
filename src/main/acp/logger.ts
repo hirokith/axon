@@ -27,7 +27,7 @@ export class MessageLogger {
   }
 
   getEntries(): LogEntry[] {
-    return this.entries
+    return [...this.entries]
   }
 
   clear(): void {

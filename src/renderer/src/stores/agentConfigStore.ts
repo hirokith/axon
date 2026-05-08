@@ -23,8 +23,13 @@ export const useAgentConfigStore = create<AgentConfigState>((set) => ({
   loading: false,
   fetchAgents: async () => {
     set({ loading: true })
-    const agents = await (window as any).acpApi.agentConfig.list()
-    set({ agents, loading: false })
+    try {
+      const agents = await (window as any).acpApi.agentConfig.list()
+      set({ agents, loading: false })
+    } catch (e) {
+      set({ loading: false })
+      throw e
+    }
   },
   addAgent: async (agent) => {
     const id = crypto.randomUUID()

@@ -4,13 +4,14 @@ import { is } from '@electron-toolkit/utils'
 import { StdioTransport } from './acp/transport'
 import { AcpClient } from './acp/client'
 import { MessageLogger } from './acp/logger'
-import { AgentConfig, PermissionOutcome } from './acp/types'
+import { AgentConfig } from './acp/types'
 import { JsonRpcMessage } from './acp/jsonrpc'
 import { getAgents, addAgent, updateAgent, deleteAgent, AgentConfig as StoredAgentConfig } from './store'
 
 let mainWindow: BrowserWindow | null = null
 let transport: StdioTransport | null = null
 let client: AcpClient | null = null
+let connectedCwd: string | null = null
 const logger = new MessageLogger()
 
 function createWindow(): void {
@@ -57,6 +58,7 @@ function setupAcpHandlers(): void {
       cwd: config.cwd,
       env: config.env
     })
+    connectedCwd = config.cwd || null
 
     // Wrap transport send to log outgoing messages
     const originalSend = transport.send.bind(transport)
@@ -143,7 +145,7 @@ function setupAcpHandlers(): void {
 
   ipcMain.handle('acp:create-session', async () => {
     if (!client) throw new Error('Not connected')
-    return client.createSession()
+    return client.createSession(connectedCwd || undefined)
   })
 
   ipcMain.handle('acp:send-prompt', async (_event, sessionId: string, text: string) => {
@@ -159,9 +161,9 @@ function setupAcpHandlers(): void {
 
   ipcMain.handle(
     'acp:respond-permission',
-    async (_event, id: number | string, outcome: PermissionOutcome) => {
+    async (_event, id: number | string, optionId: string) => {
       if (!client) throw new Error('Not connected')
-      client.respondPermission(id, outcome)
+      client.respondPermission(id, optionId)
     }
   )
 

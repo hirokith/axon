@@ -21,7 +21,16 @@ export default function StructuredLogItem({ entry }: { entry: StructuredLogEntry
   return (
     <div
       className="border-b border-border px-3 py-1 hover:bg-surface-hover cursor-pointer"
+      role="button"
+      tabIndex={0}
+      aria-expanded={expanded}
       onClick={() => setExpanded(!expanded)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          setExpanded(!expanded)
+        }
+      }}
     >
       <div className="flex items-center gap-2 text-xs">
         <span className="text-text-subtle font-mono text-[10px] shrink-0">
