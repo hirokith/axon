@@ -18,6 +18,10 @@
   <sub>Stop <code>tail -f</code>-ing your agent logs. Start <em>seeing</em> what it thinks.</sub>
 </p>
 
+<p align="center">
+  <a href="./README.zh-CN.md">🇨🇳 中文文档</a>
+</p>
+
 ---
 
 ## 🤔 Why Acorn?
@@ -59,6 +63,25 @@ AI agents are powerful — but working with them today feels like talking to a b
 ---
 
 ## 🚀 Quick Start
+
+### Download
+
+Grab the latest release from [**GitHub Releases**](https://github.com/hirokith/acorn/releases):
+
+| Platform | File |
+|----------|------|
+| macOS (Apple Silicon) | `Acorn-x.x.x-arm64.dmg` |
+| macOS (Intel) | `Acorn-x.x.x-x64.dmg` |
+| Windows | `Acorn-x.x.x-Setup.exe` |
+| Linux | `Acorn-x.x.x.AppImage` / `.deb` |
+
+> [!NOTE]
+> **macOS users**: On first launch, you may see "Cannot verify developer". Right-click the app → "Open" → click "Open" again (one-time only).  
+> Or run in terminal: `xattr -cr /Applications/Acorn.app`
+>
+> **Windows users**: SmartScreen may show a warning. Click "More info" → "Run anyway".
+
+### From Source
 
 ```bash
 git clone https://github.com/hirokith/acorn.git
