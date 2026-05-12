@@ -55,7 +55,7 @@ function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
-    icon: join(__dirname, '../../src/logo.png'),
+    icon: join(__dirname, '../../build/icon.png'),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false
@@ -232,7 +232,7 @@ function setupAcpHandlers(): void {
 
 app.whenReady().then(() => {
   if (process.platform === 'darwin') {
-    const icon = nativeImage.createFromPath(join(__dirname, '../../src/logo.png'))
+    const icon = nativeImage.createFromPath(join(__dirname, '../../build/icon.png'))
     app.dock.setIcon(icon)
   }
 

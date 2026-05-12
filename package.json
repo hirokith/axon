@@ -37,7 +37,7 @@
   "build": {
     "appId": "com.axon.app",
     "productName": "Axon",
-    "icon": "src/logo.png",
+    "icon": "build/icon",
     "directories": {
       "output": "release"
     },
