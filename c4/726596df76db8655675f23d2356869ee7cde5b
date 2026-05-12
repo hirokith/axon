@@ -1,0 +1,88 @@
+package.json
+  c3eb9ff607641946 40 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a0293a8fc5ee907a1c96fde","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Single":40}]}]}
+src/main/index.ts
+  c3eb9ff607641946 58,235 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a0293a8fc5ee907a1c96fde","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Single":58},{"Single":235}]}]}
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "c4726596df76db8655675f23d2356869ee7cde5b",
+  "prompts": {
+    "c3eb9ff607641946": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a01f2011de7641c9c2cc98c",
+        "model": "c_o_new_thinking__dev"
+      },
+      "human_author": "hirokith <2196373+hirokith@users.noreply.github.com>",
+      "messages": [],
+      "total_additions": 3,
+      "total_deletions": 3,
+      "accepted_lines": 3,
+      "overriden_lines": 0
+    }
+  },
+  "attestation_metadata": {
+    "package.json": [
+      {
+        "hash": "c3eb9ff607641946",
+        "line_ranges": [
+          {
+            "Single": 40
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a0293a8fc5ee907a1c96fde",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Single": 40
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "src/main/index.ts": [
+      {
+        "hash": "c3eb9ff607641946",
+        "line_ranges": [
+          {
+            "Single": 58
+          },
+          {
+            "Single": 235
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a0293a8fc5ee907a1c96fde",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Single": 58
+              },
+              {
+                "Single": 235
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "remote_transcripts": {
+    "c3eb9ff607641946": {
+      "tool": "trae",
+      "conversation_id": "6a01f2011de7641c9c2cc98c",
+      "session_id": "6a01f2011de7641c9c2cc98c",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    }
+  }
+}
