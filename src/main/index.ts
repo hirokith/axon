@@ -9,6 +9,7 @@ import { AcpClient } from './acp/client'
 import { MessageLogger } from './acp/logger'
 import { AgentConfig } from './acp/types'
 import { JsonRpcMessage } from './acp/jsonrpc'
+import { queryLogs, clearLogs, closeDb } from './db'
 import { getAgents, addAgent, updateAgent, deleteAgent, AgentConfig as StoredAgentConfig, getMcpServers, addMcpServer, updateMcpServer, deleteMcpServer, McpServerConfig as StoredMcpServerConfig } from './store'
 import { IpcChannel, LogDirection } from '../shared/constants'
 
@@ -96,7 +97,7 @@ function setupAcpHandlers(): void {
     if (connections.has(agentId)) {
       disconnectAgent(agentId)
     }
-    logger.clear()
+    logger.setContext(agentId)
 
     const transport = new StdioTransport({
       command: config.command,
@@ -225,8 +226,8 @@ function setupAcpHandlers(): void {
     }
   )
 
-  ipcMain.handle(IpcChannel.AcpGetLogEntries, async () => {
-    return logger.getEntries()
+  ipcMain.handle(IpcChannel.AcpGetLogEntries, async (_event, options?: { limit?: number; offset?: number }) => {
+    return logger.getEntries(options)
   })
 }
 
@@ -249,6 +250,10 @@ app.whenReady().then(() => {
   ipcMain.handle(IpcChannel.McpServersAdd, (_, server: StoredMcpServerConfig) => { addMcpServer(server); return getMcpServers() })
   ipcMain.handle(IpcChannel.McpServersUpdate, (_, id: string, updates: Partial<StoredMcpServerConfig>) => { updateMcpServer(id, updates); return getMcpServers() })
   ipcMain.handle(IpcChannel.McpServersDelete, (_, id: string) => { deleteMcpServer(id); return getMcpServers() })
+
+  // Log query IPC handlers
+  ipcMain.handle(IpcChannel.LogsQuery, (_, options?: any) => queryLogs(options || {}))
+  ipcMain.handle(IpcChannel.LogsClear, (_, options?: any) => clearLogs(options))
 
   ipcMain.handle(IpcChannel.DialogSelectDirectory, async () => {
     const result = await dialog.showOpenDialog({ properties: ['openDirectory'] })
@@ -390,4 +395,8 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
   }
+})
+
+app.on('will-quit', () => {
+  closeDb()
 })

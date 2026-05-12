@@ -6,6 +6,8 @@ export const IpcChannel = {
   AcpCancelPrompt: 'acp:cancel-prompt',
   AcpRespondPermission: 'acp:respond-permission',
   AcpGetLogEntries: 'acp:get-log-entries',
+  LogsQuery: 'logs:query',
+  LogsClear: 'logs:clear',
   AgentsList: 'agents:list',
   AgentsAdd: 'agents:add',
   AgentsUpdate: 'agents:update',

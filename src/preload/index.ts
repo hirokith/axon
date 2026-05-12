@@ -13,7 +13,11 @@ const acpApi = {
     ipcRenderer.invoke(IpcChannel.AcpCancelPrompt, agentId, sessionId),
   respondPermission: (agentId: string, id: number | string, outcome: string) =>
     ipcRenderer.invoke(IpcChannel.AcpRespondPermission, agentId, id, outcome),
-  getLogEntries: () => ipcRenderer.invoke(IpcChannel.AcpGetLogEntries),
+  getLogEntries: (options?: { limit?: number; offset?: number }) => ipcRenderer.invoke(IpcChannel.AcpGetLogEntries, options),
+  logs: {
+    query: (options?: any) => ipcRenderer.invoke(IpcChannel.LogsQuery, options),
+    clear: (options?: any) => ipcRenderer.invoke(IpcChannel.LogsClear, options),
+  },
   agentConfig: {
     list: () => ipcRenderer.invoke(IpcChannel.AgentsList),
     add: (agent: any) => ipcRenderer.invoke(IpcChannel.AgentsAdd, agent),
