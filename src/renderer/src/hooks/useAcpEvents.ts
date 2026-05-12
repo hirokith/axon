@@ -193,10 +193,22 @@ export function useAcpEvents(): void {
       addPermissionRequest(req)
     })
 
+    // Subscribe to stderr - show errors in chat
+    const unsubStderr = acpApi.onStderrLog((data: { agentId: string; text: string }) => {
+      const text = data.text?.trim()
+      if (!text) return
+      // Only show error-like messages in chat
+      if (/error|Error|ERROR|ELIFECYCLE|fatal|FATAL|panic/.test(text)) {
+        appendAgentText(`\n\n**Error:** ${text}\n`, undefined)
+        setIsPrompting(false, undefined)
+      }
+    })
+
     return () => {
       unsubSession()
       unsubConnection()
       unsubPermission()
+      unsubStderr()
       turnTimersRef.current.forEach((t) => clearTimeout(t))
       turnTimersRef.current.clear()
     }

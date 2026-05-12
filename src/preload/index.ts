@@ -54,8 +54,8 @@ const acpApi = {
       ipcRenderer.removeListener('acp:connection-status', listener)
     }
   },
-  onStderrLog: (callback: (text: string) => void) => {
-    const listener = (_event: any, text: string): void => callback(text)
+  onStderrLog: (callback: (data: { agentId: string; text: string }) => void) => {
+    const listener = (_event: any, data: { agentId: string; text: string }): void => callback(data)
     ipcRenderer.on('acp:stderr', listener)
     return (): void => {
       ipcRenderer.removeListener('acp:stderr', listener)
