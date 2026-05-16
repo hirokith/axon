@@ -57,48 +57,16 @@ function CopyButton({ text }: { text: string }) {
 }
 
 function MessageBubble({ message }: { message: ChatMessage }) {
-  const isDark = useIsDark()
-  if (message.role === MessageRole.User) {
-    return (
-      <div className="group px-4 py-2 hover:bg-surface-hover bg-accent/5 border-l-2 border-l-accent">
-        <div className="flex items-center gap-2 mb-1">
-          <span className="text-xs font-medium text-accent">You</span>
-          <span className="text-xs text-text-subtle">{formatTime(message.timestamp)}</span>
-          <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-            <CopyButton text={message.text} />
-          </div>
-        </div>
-        <div className="text-sm text-text whitespace-pre-wrap">{message.text}</div>
-      </div>
-    )
-  }
-
-  if (message.isThought) {
-    // Should not render standalone — handled by AgentGroup
-    return null
-  }
-
   return (
-    <div className="group px-4 py-2 hover:bg-surface-hover">
+    <div className="group px-4 py-2 hover:bg-surface-hover/50 bg-accent/5 border-l-2 border-l-accent">
       <div className="flex items-center gap-2 mb-1">
-        <span className="text-xs font-medium text-success">Agent</span>
+        <span className="text-xs font-medium text-accent">You</span>
         <span className="text-xs text-text-subtle">{formatTime(message.timestamp)}</span>
         <div className="opacity-0 group-hover:opacity-100 transition-opacity">
           <CopyButton text={message.text} />
         </div>
       </div>
-      {message.text && (
-        <div className={`text-sm text-text prose prose-sm max-w-none ${isDark ? 'prose-invert' : ''} [&_pre]:bg-panel-bg [&_pre]:border [&_pre]:border-border [&_code]:text-warning [&_a]:text-accent`}>
-          <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{message.text}</ReactMarkdown>
-        </div>
-      )}
-      {message.toolCalls && message.toolCalls.length > 0 && (
-        <div className="mt-2 space-y-1">
-          {message.toolCalls.map((tc, i) => (
-            <ToolCallCard key={tc.toolCallId} toolCall={tc} index={i + 1} />
-          ))}
-        </div>
-      )}
+      <div className="text-sm text-text whitespace-pre-wrap">{message.text}</div>
     </div>
   )
 }
@@ -141,7 +109,7 @@ function AgentGroup({ items }: { items: ChatMessage[] }) {
   }
 
   return (
-    <div className="group px-4 py-2 hover:bg-surface-hover">
+    <div className="group px-4 py-2 hover:bg-surface-hover/50">
       <div className="flex items-center gap-2 mb-1">
         <span className="text-xs font-medium text-success">Agent</span>
         {lastTimestamp && <span className="text-xs text-text-subtle">{formatTime(lastTimestamp)}</span>}
