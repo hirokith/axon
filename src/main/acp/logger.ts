@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid'
 import { JsonRpcMessage } from './jsonrpc'
 import { LogDirection } from '../../shared/constants'
-import { insertLog, queryLogs, getLogCount, clearLogs as dbClearLogs, LogRow } from '../db'
+import { insertLog, queryLogs, LogRow } from '../db'
 
 export interface LogEntry {
   id: string
@@ -31,22 +31,17 @@ export class MessageLogger {
       method: (message as any).method || null,
       message
     }
-    insertLog(entry)
+    // Fire and forget - don't block on DB write
+    insertLog(entry).catch((err) => {
+      console.error('[Logger] Failed to persist log:', err)
+    })
   }
 
-  getEntries(options?: { limit?: number; offset?: number }): LogRow[] {
+  async getEntries(options?: { limit?: number; offset?: number }): Promise<LogRow[]> {
     return queryLogs({
       limit: options?.limit || 500,
       offset: options?.offset || 0,
       agentId: this.agentId || undefined
     })
-  }
-
-  getCount(): number {
-    return getLogCount({ agentId: this.agentId || undefined })
-  }
-
-  clear(): void {
-    dbClearLogs(this.agentId ? { sessionId: this.agentId } : undefined)
   }
 }

@@ -124,28 +124,33 @@ export class AcpClient extends EventEmitter {
     })
   }
 
-  sendPrompt(sessionId: string, text: string): void {
-    const id = this.nextId++
-    const request: JsonRpcRequest = {
-      jsonrpc: '2.0',
-      id,
-      method: 'session/prompt',
-      params: {
-        sessionId,
-        prompt: [{ type: 'text', text }]
+  sendPrompt(sessionId: string, text: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const id = this.nextId++
+      const request: JsonRpcRequest = {
+        jsonrpc: '2.0',
+        id,
+        method: 'session/prompt',
+        params: {
+          sessionId,
+          prompt: [{ type: 'text', text }]
+        }
       }
-    }
-    // Store the pending request so we can resolve it if the agent responds
-    this.pendingRequests.set(id, {
-      resolve: () => {},
-      reject: (err: any) => this.emit('prompt-error', err)
+      this.pendingRequests.set(id, {
+        resolve: () => resolve(),
+        reject: (err: any) => {
+          this.emit('prompt-error', err)
+          reject(err)
+        }
+      })
+      try {
+        this.transport.send(request)
+      } catch (err) {
+        this.pendingRequests.delete(id)
+        this.emit('prompt-error', err)
+        reject(err)
+      }
     })
-    try {
-      this.transport.send(request)
-    } catch (err) {
-      this.pendingRequests.delete(id)
-      this.emit('prompt-error', err)
-    }
   }
 
   cancelPrompt(sessionId: string): void {

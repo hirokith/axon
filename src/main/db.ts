@@ -1,7 +1,8 @@
-import Database from 'better-sqlite3'
 import { app } from 'electron'
 import { join } from 'path'
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { LogDirection } from '../shared/constants'
+import initSqlJs, { Database as SqlJsDatabase } from 'sql.js'
 
 export interface LogRow {
   id: string
@@ -13,18 +14,27 @@ export interface LogRow {
   message: string
 }
 
-let db: Database.Database | null = null
+let db: SqlJsDatabase | null = null
+let dbPath: string = ''
+let saveTimer: ReturnType<typeof setTimeout> | null = null
 
-function getDb(): Database.Database {
+async function getDb(): Promise<SqlJsDatabase> {
   if (db) return db
 
-  const dbPath = join(app.getPath('userData'), 'axon-logs.db')
-  db = new Database(dbPath)
+  const SQL = await initSqlJs()
 
-  // WAL mode for better concurrent read/write performance
-  db.pragma('journal_mode = WAL')
+  const userDataPath = app.getPath('userData')
+  mkdirSync(userDataPath, { recursive: true })
+  dbPath = join(userDataPath, 'axon-logs.db')
 
-  db.exec(`
+  if (existsSync(dbPath)) {
+    const buffer = readFileSync(dbPath)
+    db = new SQL.Database(buffer)
+  } else {
+    db = new SQL.Database()
+  }
+
+  db.run(`
     CREATE TABLE IF NOT EXISTS logs (
       id TEXT PRIMARY KEY,
       timestamp INTEGER NOT NULL,
@@ -33,16 +43,47 @@ function getDb(): Database.Database {
       agent_id TEXT,
       method TEXT,
       message TEXT NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON logs(timestamp);
-    CREATE INDEX IF NOT EXISTS idx_logs_session ON logs(session_id);
-    CREATE INDEX IF NOT EXISTS idx_logs_agent ON logs(agent_id);
+    )
   `)
+  db.run(`CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON logs(timestamp)`)
+  db.run(`CREATE INDEX IF NOT EXISTS idx_logs_session ON logs(session_id)`)
+  db.run(`CREATE INDEX IF NOT EXISTS idx_logs_agent ON logs(agent_id)`)
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS structured_logs (
+      id TEXT PRIMARY KEY,
+      timestamp INTEGER NOT NULL,
+      session_id TEXT,
+      type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      status TEXT,
+      content TEXT,
+      kind TEXT,
+      raw_input TEXT,
+      raw_output TEXT
+    )
+  `)
+  db.run(`CREATE INDEX IF NOT EXISTS idx_slogs_timestamp ON structured_logs(timestamp)`)
+  db.run(`CREATE INDEX IF NOT EXISTS idx_slogs_session ON structured_logs(session_id)`)
 
   return db
 }
 
-export function insertLog(entry: {
+function scheduleSave(): void {
+  if (saveTimer) return
+  saveTimer = setTimeout(() => {
+    saveTimer = null
+    persistDb()
+  }, 2000)
+}
+
+function persistDb(): void {
+  if (!db || !dbPath) return
+  const data = db.export()
+  writeFileSync(dbPath, Buffer.from(data))
+}
+
+export async function insertLog(entry: {
   id: string
   timestamp: number
   direction: LogDirection
@@ -50,24 +91,25 @@ export function insertLog(entry: {
   agentId?: string | null
   method?: string | null
   message: any
-}): void {
-  const d = getDb()
-  const stmt = d.prepare(`
-    INSERT OR IGNORE INTO logs (id, timestamp, direction, session_id, agent_id, method, message)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `)
-  stmt.run(
-    entry.id,
-    entry.timestamp,
-    entry.direction,
-    entry.sessionId || null,
-    entry.agentId || null,
-    entry.method || null,
-    typeof entry.message === 'string' ? entry.message : JSON.stringify(entry.message)
+}): Promise<void> {
+  const d = await getDb()
+  d.run(
+    `INSERT OR IGNORE INTO logs (id, timestamp, direction, session_id, agent_id, method, message)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [
+      entry.id,
+      entry.timestamp,
+      entry.direction,
+      entry.sessionId || null,
+      entry.agentId || null,
+      entry.method || null,
+      typeof entry.message === 'string' ? entry.message : JSON.stringify(entry.message)
+    ]
   )
+  scheduleSave()
 }
 
-export function queryLogs(options: {
+export async function queryLogs(options: {
   limit?: number
   offset?: number
   sessionId?: string
@@ -76,8 +118,8 @@ export function queryLogs(options: {
   since?: number
   until?: number
   keyword?: string
-}): LogRow[] {
-  const d = getDb()
+}): Promise<LogRow[]> {
+  const d = await getDb()
   const conditions: string[] = []
   const params: any[] = []
 
@@ -117,12 +159,19 @@ export function queryLogs(options: {
     LIMIT ? OFFSET ?
   `)
   params.push(limit, offset)
+  stmt.bind(params)
 
-  return stmt.all(...params) as LogRow[]
+  const rows: LogRow[] = []
+  while (stmt.step()) {
+    const row = stmt.getAsObject() as any
+    rows.push(row as LogRow)
+  }
+  stmt.free()
+  return rows
 }
 
-export function getLogCount(options?: { sessionId?: string; agentId?: string }): number {
-  const d = getDb()
+export async function getLogCount(options?: { sessionId?: string; agentId?: string }): Promise<number> {
+  const d = await getDb()
   const conditions: string[] = []
   const params: any[] = []
 
@@ -137,23 +186,122 @@ export function getLogCount(options?: { sessionId?: string; agentId?: string }):
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
   const stmt = d.prepare(`SELECT COUNT(*) as count FROM logs ${where}`)
-  const result = stmt.get(...params) as { count: number }
-  return result.count
+  stmt.bind(params)
+  stmt.step()
+  const result = stmt.getAsObject() as any
+  stmt.free()
+  return result.count as number
 }
 
-export function clearLogs(options?: { before?: number; sessionId?: string }): void {
-  const d = getDb()
+export async function clearLogs(options?: { before?: number; sessionId?: string }): Promise<void> {
+  const d = await getDb()
   if (options?.before) {
-    d.prepare('DELETE FROM logs WHERE timestamp < ?').run(options.before)
+    d.run('DELETE FROM logs WHERE timestamp < ?', [options.before])
+    d.run('DELETE FROM structured_logs WHERE timestamp < ?', [options.before])
   } else if (options?.sessionId) {
-    d.prepare('DELETE FROM logs WHERE session_id = ?').run(options.sessionId)
+    d.run('DELETE FROM logs WHERE session_id = ?', [options.sessionId])
+    d.run('DELETE FROM structured_logs WHERE session_id = ?', [options.sessionId])
   } else {
-    d.prepare('DELETE FROM logs').run()
+    d.run('DELETE FROM logs')
+    d.run('DELETE FROM structured_logs')
   }
+  scheduleSave()
+}
+
+export interface StructuredLogRow {
+  id: string
+  timestamp: number
+  sessionId: string | null
+  type: string
+  title: string
+  status: string | null
+  content: string | null
+  kind: string | null
+  rawInput: string | null
+  rawOutput: string | null
+}
+
+export async function insertStructuredLog(entry: {
+  id: string
+  timestamp: number
+  sessionId?: string | null
+  type: string
+  title: string
+  status?: string | null
+  content?: string | null
+  kind?: string | null
+  rawInput?: any
+  rawOutput?: any
+}): Promise<void> {
+  const d = await getDb()
+  d.run(
+    `INSERT OR IGNORE INTO structured_logs (id, timestamp, session_id, type, title, status, content, kind, raw_input, raw_output)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      entry.id,
+      entry.timestamp,
+      entry.sessionId || null,
+      entry.type,
+      entry.title,
+      entry.status || null,
+      entry.content || null,
+      entry.kind || null,
+      entry.rawInput ? JSON.stringify(entry.rawInput) : null,
+      entry.rawOutput ? JSON.stringify(entry.rawOutput) : null
+    ]
+  )
+  scheduleSave()
+}
+
+export async function queryStructuredLogs(options?: {
+  sessionId?: string
+  limit?: number
+  offset?: number
+}): Promise<StructuredLogRow[]> {
+  const d = await getDb()
+  const conditions: string[] = []
+  const params: any[] = []
+
+  if (options?.sessionId) {
+    conditions.push('session_id = ?')
+    params.push(options.sessionId)
+  }
+
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
+  const limit = options?.limit || 5000
+  const offset = options?.offset || 0
+
+  const stmt = d.prepare(`
+    SELECT id, timestamp, session_id as sessionId, type, title, status, content, kind, raw_input as rawInput, raw_output as rawOutput
+    FROM structured_logs ${where}
+    ORDER BY timestamp ASC
+    LIMIT ? OFFSET ?
+  `)
+  params.push(limit, offset)
+  stmt.bind(params)
+
+  const rows: StructuredLogRow[] = []
+  while (stmt.step()) {
+    const row = stmt.getAsObject() as any
+    if (row.rawInput) {
+      try { row.rawInput = JSON.parse(row.rawInput) } catch {}
+    }
+    if (row.rawOutput) {
+      try { row.rawOutput = JSON.parse(row.rawOutput) } catch {}
+    }
+    rows.push(row as StructuredLogRow)
+  }
+  stmt.free()
+  return rows
 }
 
 export function closeDb(): void {
+  if (saveTimer) {
+    clearTimeout(saveTimer)
+    saveTimer = null
+  }
   if (db) {
+    persistDb()
     db.close()
     db = null
   }

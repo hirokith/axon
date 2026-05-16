@@ -60,6 +60,9 @@ export default function Settings() {
   const [mcpJson, setMcpJson] = useState('')
   const [mcpJsonError, setMcpJsonError] = useState('')
 
+  const [testingConnection, setTestingConnection] = useState(false)
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null)
+
   useEffect(() => { fetchAgents(); fetchServers() }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -101,6 +104,26 @@ export default function Settings() {
     setShowForm(false)
     setEditingId(null)
     setForm(emptyForm)
+    setTestResult(null)
+  }
+
+  const handleTestConnection = async () => {
+    setTestingConnection(true)
+    setTestResult(null)
+    try {
+      const config = {
+        command: form.command,
+        args: form.args.split(',').map(s => s.trim()).filter(Boolean),
+        cwd: form.cwd || undefined,
+        env: parseEnv(form.env),
+      }
+      const result = await (window as any).acpApi.testConnection(config)
+      setTestResult(result)
+    } catch (e: any) {
+      setTestResult({ success: false, message: e.message || 'Test connection failed' })
+    } finally {
+      setTestingConnection(false)
+    }
   }
 
   const handleMcpSubmit = async (e: React.FormEvent) => {
@@ -227,6 +250,22 @@ export default function Settings() {
           <div>
             <label className="block text-[10px] text-text-muted uppercase tracking-wide mb-0.5">Environment Variables</label>
             <textarea value={form.env} onChange={e => setForm({ ...form, env: e.target.value })} className={`${inputClass} resize-none`} rows={3} placeholder="KEY=value" />
+          </div>
+          <div className="pt-1">
+            <button
+              type="button"
+              onClick={handleTestConnection}
+              disabled={testingConnection || !form.command}
+              className="w-full px-3 py-1.5 text-xs border border-border text-text rounded-sm hover:bg-surface-hover disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {testingConnection ? 'Testing...' : 'Test Connection'}
+            </button>
+            {testResult && (
+              <div className={`mt-2 px-3 py-2 rounded-sm text-xs ${testResult.success ? 'bg-green-900/30 text-green-300' : 'bg-red-900/30 text-red-300'}`}>
+                <span className="mr-1.5">{testResult.success ? '\u2705' : '\u274C'}</span>
+                {testResult.message}
+              </div>
+            )}
           </div>
           <div className="flex gap-2 pt-1">
             <button type="submit" className="px-3 py-1 text-xs bg-accent text-panel-bg rounded-sm hover:opacity-90 font-medium">

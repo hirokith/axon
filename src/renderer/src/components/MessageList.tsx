@@ -94,8 +94,8 @@ function MessageBubble({ message }: { message: ChatMessage }) {
       )}
       {message.toolCalls && message.toolCalls.length > 0 && (
         <div className="mt-2 space-y-1">
-          {message.toolCalls.map((tc) => (
-            <ToolCallCard key={tc.toolCallId} toolCall={tc} />
+          {message.toolCalls.map((tc, i) => (
+            <ToolCallCard key={tc.toolCallId} toolCall={tc} index={i + 1} />
           ))}
         </div>
       )}
@@ -103,13 +103,42 @@ function MessageBubble({ message }: { message: ChatMessage }) {
   )
 }
 
-function AgentGroup({ thoughts, agentMsgs }: { thoughts: ChatMessage[]; agentMsgs: ChatMessage[] }) {
+function AgentGroup({ items }: { items: ChatMessage[] }) {
   const [showThoughts, setShowThoughts] = useState(false)
   const isDark = useIsDark()
-  const thoughtText = thoughts.map((t) => t.text).join('')
-  const combinedText = agentMsgs.map((m) => m.text).filter(Boolean).join('')
-  const allToolCalls = agentMsgs.flatMap((m) => m.toolCalls || [])
-  const lastTimestamp = agentMsgs.length > 0 ? agentMsgs[agentMsgs.length - 1].timestamp : thoughts[0]?.timestamp
+  const combinedText = items.filter((m) => !m.isThought && m.text).map((m) => m.text).join('')
+  const lastTimestamp = items[items.length - 1]?.timestamp
+
+  // Collect consecutive thoughts into collapsible blocks, render others inline
+  const segments: Array<{ type: 'thought'; text: string } | { type: 'msg'; msg: ChatMessage }> = []
+  let thoughtBuf = ''
+
+  const flushThought = () => {
+    if (thoughtBuf) {
+      segments.push({ type: 'thought', text: thoughtBuf })
+      thoughtBuf = ''
+    }
+  }
+
+  for (const msg of items) {
+    if (msg.isThought) {
+      thoughtBuf += msg.text || ''
+    } else {
+      flushThought()
+      segments.push({ type: 'msg', msg })
+    }
+  }
+  flushThought()
+
+  // Compute a global tool call offset for each segment so numbering is continuous
+  const segmentToolOffsets: number[] = []
+  let toolCounter = 0
+  for (const seg of segments) {
+    segmentToolOffsets.push(toolCounter)
+    if (seg.type === 'msg' && seg.msg.toolCalls) {
+      toolCounter += seg.msg.toolCalls.length
+    }
+  }
 
   return (
     <div className="group px-4 py-2 hover:bg-surface-hover">
@@ -123,41 +152,43 @@ function AgentGroup({ thoughts, agentMsgs }: { thoughts: ChatMessage[]; agentMsg
         )}
       </div>
 
-      {/* Collapsible thinking */}
-      {thoughtText && (
-        <div className="mb-1.5">
-          <button
-            onClick={() => setShowThoughts(!showThoughts)}
-            className="flex items-center gap-1 text-[11px] text-thought/60 hover:text-thought/80 transition-colors"
-          >
-            <span>{showThoughts ? '▾' : '▸'}</span>
-            <span>Thinking</span>
-            {!showThoughts && (
-              <span className="text-text-subtle ml-1 truncate max-w-[300px]">
-                {thoughtText.slice(0, 60)}...
-              </span>
+      {segments.map((seg, si) =>
+        seg.type === 'thought' ? (
+          <div key={si} className="mb-1.5">
+            <button
+              onClick={() => setShowThoughts(!showThoughts)}
+              className="flex items-center gap-1 text-[11px] text-thought/60 hover:text-thought/80 transition-colors"
+            >
+              <span>{showThoughts ? '▾' : '▸'}</span>
+              <span>Thinking</span>
+              {!showThoughts && (
+                <span className="text-text-subtle ml-1 truncate max-w-[300px]">
+                  {seg.text.slice(0, 60)}...
+                </span>
+              )}
+            </button>
+            {showThoughts && (
+              <div className="mt-1 ml-3 pl-2 border-l border-thought/20 text-xs text-text-muted/70 italic whitespace-pre-wrap">
+                {seg.text}
+              </div>
             )}
-          </button>
-          {showThoughts && (
-            <div className="mt-1 ml-3 pl-2 border-l border-thought/20 text-xs text-text-muted/70 italic whitespace-pre-wrap">
-              {thoughtText}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Agent response */}
-      {combinedText && (
-        <div className={`text-sm text-text prose prose-sm max-w-none ${isDark ? 'prose-invert' : ''} [&_pre]:bg-panel-bg [&_pre]:border [&_pre]:border-border [&_code]:text-warning [&_a]:text-accent`}>
-          <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{combinedText}</ReactMarkdown>
-        </div>
-      )}
-      {allToolCalls.length > 0 && (
-        <div className="mt-2 space-y-1">
-          {allToolCalls.map((tc) => (
-            <ToolCallCard key={tc.toolCallId} toolCall={tc} />
-          ))}
-        </div>
+          </div>
+        ) : (
+          <div key={si}>
+            {seg.msg.text && (
+              <div className={`text-sm text-text prose prose-sm max-w-none ${isDark ? 'prose-invert' : ''} [&_pre]:bg-panel-bg [&_pre]:border [&_pre]:border-border [&_code]:text-warning [&_a]:text-accent`}>
+                <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{seg.msg.text}</ReactMarkdown>
+              </div>
+            )}
+            {seg.msg.toolCalls && seg.msg.toolCalls.length > 0 && (
+              <div className="mt-2 mb-2 space-y-1">
+                {seg.msg.toolCalls.map((tc, i) => (
+                  <ToolCallCard key={tc.toolCallId} toolCall={tc} index={segmentToolOffsets[si] + i + 1} />
+                ))}
+              </div>
+            )}
+          </div>
+        )
       )}
     </div>
   )
@@ -171,9 +202,24 @@ export default function MessageList() {
     s.sessions.find((ses) => ses.sessionId === s.activeSessionId)?.isPrompting ?? false
   )
   const bottomRef = useRef<HTMLDivElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const isUserScrolledUp = useRef(false)
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    const el = containerRef.current
+    if (!el) return
+    const handleScroll = () => {
+      const threshold = 80
+      isUserScrolledUp.current = el.scrollHeight - el.scrollTop - el.clientHeight > threshold
+    }
+    el.addEventListener('scroll', handleScroll)
+    return () => el.removeEventListener('scroll', handleScroll)
+  }, [])
+
+  useEffect(() => {
+    if (!isUserScrolledUp.current) {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
   }, [messages, isPrompting])
 
   if (messages.length === 0) {
@@ -187,27 +233,23 @@ export default function MessageList() {
     )
   }
 
-  // Group messages: consecutive thinking + assistant messages merge into one agent block
-  const renderGroups: Array<{ type: 'user'; msg: ChatMessage } | { type: 'agent'; thoughts: ChatMessage[]; agentMsgs: ChatMessage[] }> = []
-  let pendingThoughts: ChatMessage[] = []
-  let pendingAgentMsgs: ChatMessage[] = []
+  // Group messages: consecutive non-user messages merge into one agent block, preserving order
+  const renderGroups: Array<{ type: 'user'; msg: ChatMessage } | { type: 'agent'; items: ChatMessage[] }> = []
+  let pendingItems: ChatMessage[] = []
 
   const flushAgent = () => {
-    if (pendingThoughts.length > 0 || pendingAgentMsgs.length > 0) {
-      renderGroups.push({ type: 'agent', thoughts: pendingThoughts, agentMsgs: pendingAgentMsgs })
-      pendingThoughts = []
-      pendingAgentMsgs = []
+    if (pendingItems.length > 0) {
+      renderGroups.push({ type: 'agent', items: pendingItems })
+      pendingItems = []
     }
   }
 
   for (const msg of messages) {
-    if (msg.isThought) {
-      pendingThoughts.push(msg)
-    } else if (msg.role === MessageRole.Agent || (msg.role as string) === 'assistant') {
-      pendingAgentMsgs.push(msg)
-    } else {
+    if (msg.role === MessageRole.User) {
       flushAgent()
       renderGroups.push({ type: 'user', msg })
+    } else {
+      pendingItems.push(msg)
     }
   }
   flushAgent()
@@ -217,13 +259,13 @@ export default function MessageList() {
   const showLoading = isPrompting && (!lastMsg || lastMsg.role === MessageRole.User)
 
   return (
-    <div className="flex-1 overflow-y-auto">
+    <div ref={containerRef} className="flex-1 overflow-y-auto">
       {renderGroups.map((group, gi) => (
         <div key={gi} className="border-b border-border">
           {group.type === 'user' ? (
             <MessageBubble message={group.msg} />
           ) : (
-            <AgentGroup thoughts={group.thoughts} agentMsgs={group.agentMsgs} />
+            <AgentGroup items={group.items} />
           )}
         </div>
       ))}

@@ -29,6 +29,7 @@ interface LogState {
   filter: { type?: LogEntryType; keyword?: string }
 
   addStructuredLog: (entry: StructuredLogEntry) => void
+  loadStructuredLogs: (entries: StructuredLogEntry[]) => void
   addRawLog: (entry: RawLogEntry) => void
   setDebugMode: (enabled: boolean) => void
   setFilter: (filter: { type?: LogEntryType; keyword?: string }) => void
@@ -46,6 +47,9 @@ export const useLogStore = create<LogState>((set) => ({
     set((state) => ({
       structuredLogs: [...state.structuredLogs, entry].slice(-5000)
     })),
+
+  loadStructuredLogs: (entries) =>
+    set({ structuredLogs: entries.slice(-5000) }),
 
   addRawLog: (entry) =>
     set((state) => ({

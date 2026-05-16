@@ -105,9 +105,13 @@ export function useAcpEvents(): void {
       const { update } = params
       const sid = params.sessionId as string | undefined
 
-      // Add as structured log
+      // Add as structured log (in-memory + persist to SQLite)
       const structured = classifySessionUpdate(params)
       addStructuredLog(structured)
+      acpApi.structuredLogs?.insert({
+        ...structured,
+        sessionId: sid || useChatStore.getState().activeSessionId || null
+      }).catch(() => {})
 
       // Also add as raw log if it contains JSON-RPC message
       if (params.message || params.jsonrpc) {
@@ -193,12 +197,13 @@ export function useAcpEvents(): void {
       addPermissionRequest(req)
     })
 
-    // Subscribe to stderr - show errors in chat
+    // Subscribe to stderr - only show agent-level errors in chat (not tool output errors)
     const unsubStderr = acpApi.onStderrLog((data: { agentId: string; text: string }) => {
       const text = data.text?.trim()
       if (!text) return
-      // Only show error-like messages in chat
-      if (/error|Error|ERROR|ELIFECYCLE|fatal|FATAL|panic/.test(text)) {
+      // Only surface agent infrastructure errors, not tool execution output
+      const isAgentError = /Error in agent stream|Transport closed|ACP.*failed|rate_limit|ELIFECYCLE|Cannot find module|ECONNREFUSED|SIGTERM|SIGKILL|spawn.*ENOENT/.test(text)
+      if (isAgentError) {
         appendAgentText(`\n\n**Error:** ${text}\n`, undefined)
         setIsPrompting(false, undefined)
       }

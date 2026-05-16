@@ -175,7 +175,7 @@ export const useChatStore = create<ChatState>()(
           sessions: updateSession(state.sessions, sessionId, state.activeSessionId, (s) => {
             const msgs = [...s.messages]
             const last = msgs[msgs.length - 1]
-            if (last && last.role === MessageRole.Agent && !last.isThought) {
+            if (last && last.role === MessageRole.Agent && !last.isThought && !(last.toolCalls && last.toolCalls.length > 0)) {
               msgs[msgs.length - 1] = { ...last, text: last.text + text }
             } else {
               msgs.push({
@@ -215,7 +215,7 @@ export const useChatStore = create<ChatState>()(
             const msgs = [...s.messages]
             const last = msgs[msgs.length - 1]
             const tcWithTime = { ...tc, startTime: Date.now() }
-            if (last && last.role === MessageRole.Agent && !last.isThought) {
+            if (last && last.role === MessageRole.Agent && !last.isThought && !last.text) {
               const toolCalls = [...(last.toolCalls || []), tcWithTime]
               msgs[msgs.length - 1] = { ...last, toolCalls }
             } else {

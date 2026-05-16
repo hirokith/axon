@@ -1,9 +1,9 @@
-import { useState, useCallback, useEffect } from 'react'
-import { useChatStore } from '../stores/chatStore'
+import { useState, useCallback, useEffect, useMemo } from 'react'
+import { useChatStore, SessionData } from '../stores/chatStore'
 import { useAgentConfigStore } from '../stores/agentConfigStore'
 import { useMcpConfigStore } from '../stores/mcpConfigStore'
 import { McpTransport } from '@shared/constants'
-import { FolderOpen } from 'lucide-react'
+import { FolderOpen, Plus } from 'lucide-react'
 
 export default function SessionSidebar({ activeAgentId }: { activeAgentId: string | null }) {
   const connectedAgents = useChatStore((s) => s.connectedAgents)
@@ -72,8 +72,33 @@ export default function SessionSidebar({ activeAgentId }: { activeAgentId: strin
   if (!activeAgentId && sessions.length === 0 && !showNewDialog) return null
 
   const activeAgentSessions = activeAgentId
-    ? sessions.filter((s) => s.agentId === activeAgentId)
+    ? sessions.filter((s) => s.agentId === activeAgentId).slice().reverse()
     : []
+
+  const groupedSessions = useMemo(() => {
+    const now = new Date()
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+    const yesterdayStart = todayStart - 86400000
+
+    const groups: { label: string; sessions: SessionData[] }[] = [
+      { label: 'Today', sessions: [] },
+      { label: 'Yesterday', sessions: [] },
+      { label: 'Earlier', sessions: [] },
+    ]
+
+    for (const s of activeAgentSessions) {
+      const ts = s.messages.length > 0 ? s.messages[0].timestamp : Date.now()
+      if (ts >= todayStart) {
+        groups[0].sessions.push(s)
+      } else if (ts >= yesterdayStart) {
+        groups[1].sessions.push(s)
+      } else {
+        groups[2].sessions.push(s)
+      }
+    }
+
+    return groups.filter((g) => g.sessions.length > 0)
+  }, [activeAgentSessions])
 
   const activeAgent = connectedAgents.find((a) => a.agentId === activeAgentId)
 
@@ -116,34 +141,41 @@ export default function SessionSidebar({ activeAgentId }: { activeAgentId: strin
           {activeAgentId && connectedAgents.some((a) => a.agentId === activeAgentId) && (
             <button
               onClick={openNewDialog}
-              className="text-text-muted hover:text-accent text-lg leading-none"
+              className="text-text-muted hover:text-accent flex items-center justify-center"
               title="New Session"
             >
-              +
+              <Plus size={14} />
             </button>
           )}
         </div>
         <div className="flex-1 overflow-y-auto py-0.5">
-          {activeAgentSessions.map((session) => (
-            <div
-              key={session.sessionId}
-              onClick={() => switchSession(session.sessionId)}
-              className={`group flex items-center justify-between px-3 py-1.5 cursor-pointer text-xs ${
-                session.sessionId === activeSessionId
-                  ? 'bg-surface-hover text-text border-l-2 border-l-accent'
-                  : 'text-text-muted hover:text-text hover:bg-surface-hover'
-              }`}
-            >
-              <span className="truncate">{session.label}</span>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  removeSession(session.sessionId)
-                }}
-                className="hidden group-hover:block text-text-muted hover:text-error text-xs shrink-0 ml-1"
-              >
-                ✕
-              </button>
+          {groupedSessions.map((group) => (
+            <div key={group.label}>
+              <div className="px-3 pt-2 pb-1">
+                <span className="text-[9px] text-text-subtle uppercase tracking-wider">{group.label}</span>
+              </div>
+              {group.sessions.map((session) => (
+                <div
+                  key={session.sessionId}
+                  onClick={() => switchSession(session.sessionId)}
+                  className={`group flex items-center justify-between px-3 py-1.5 cursor-pointer text-xs ${
+                    session.sessionId === activeSessionId
+                      ? 'bg-surface-hover text-text border-l-2 border-l-accent'
+                      : 'text-text-muted hover:text-text hover:bg-surface-hover'
+                  }`}
+                >
+                  <span className="truncate">{session.label}</span>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      removeSession(session.sessionId)
+                    }}
+                    className="hidden group-hover:block text-text-muted hover:text-error text-xs shrink-0 ml-1"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
             </div>
           ))}
         </div>
@@ -151,8 +183,14 @@ export default function SessionSidebar({ activeAgentId }: { activeAgentId: strin
 
       {/* New Session Dialog */}
       {showNewDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-panel-bg border border-border rounded-lg shadow-xl w-[420px] max-h-[80vh] overflow-y-auto">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') setShowNewDialog(false)
+            if (e.key === 'Enter') handleCreateSession()
+          }}
+        >
+          <div className="bg-panel-bg border border-border rounded-lg shadow-xl w-[420px] max-h-[80vh] overflow-y-auto" ref={(el) => el?.focus()} tabIndex={-1}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-border">
               <h3 className="text-sm font-medium text-text">New Session</h3>
               <button

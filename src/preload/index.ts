@@ -6,6 +6,8 @@ const acpApi = {
   connectAgent: (config: { agentId: string; command: string; args?: string[]; cwd?: string; env?: Record<string, string> }) =>
     ipcRenderer.invoke(IpcChannel.AcpConnect, config),
   disconnect: (agentId: string) => ipcRenderer.invoke(IpcChannel.AcpDisconnect, agentId),
+  testConnection: (config: { command: string; args?: string[]; cwd?: string; env?: Record<string, string> }) =>
+    ipcRenderer.invoke(IpcChannel.AcpTestConnection, config),
   createSession: (agentId: string, options?: { cwd?: string; mcpServers?: any[] }) => ipcRenderer.invoke(IpcChannel.AcpCreateSession, agentId, options),
   sendPrompt: (agentId: string, sessionId: string, text: string) =>
     ipcRenderer.invoke(IpcChannel.AcpSendPrompt, agentId, sessionId, text),
@@ -17,6 +19,10 @@ const acpApi = {
   logs: {
     query: (options?: any) => ipcRenderer.invoke(IpcChannel.LogsQuery, options),
     clear: (options?: any) => ipcRenderer.invoke(IpcChannel.LogsClear, options),
+  },
+  structuredLogs: {
+    insert: (entry: any) => ipcRenderer.invoke(IpcChannel.StructuredLogsInsert, entry),
+    query: (options?: any) => ipcRenderer.invoke(IpcChannel.StructuredLogsQuery, options),
   },
   agentConfig: {
     list: () => ipcRenderer.invoke(IpcChannel.AgentsList),
@@ -31,6 +37,7 @@ const acpApi = {
     delete: (id: string) => ipcRenderer.invoke(IpcChannel.McpServersDelete, id),
   },
   selectDirectory: () => ipcRenderer.invoke(IpcChannel.DialogSelectDirectory),
+  openExternal: (url: string) => ipcRenderer.invoke(IpcChannel.ShellOpenExternal, url),
   fs: {
     listFiles: (dirPath: string) => ipcRenderer.invoke(IpcChannel.FsListFiles, dirPath),
     readFile: (filePath: string) => ipcRenderer.invoke(IpcChannel.FsReadFile, filePath),

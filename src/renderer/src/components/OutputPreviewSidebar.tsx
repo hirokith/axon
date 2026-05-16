@@ -2,9 +2,9 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useChatStore } from '../stores/chatStore'
 import { useAgentConfigStore } from '../stores/agentConfigStore'
 import { ToolCallStatus } from '@shared/constants'
-import { ChevronRight, ChevronDown, RefreshCw, X, Code, Eye } from 'lucide-react'
+import { ChevronRight, ChevronDown, RefreshCw, X, Code, Eye, Maximize2, Minimize2, ExternalLink } from 'lucide-react'
 import { MultiFileDiff } from '@pierre/diffs/react'
-import { getIconForFile, getIconForFolder, getIconForOpenFolder } from 'vscode-icons-js'
+import { generateManifest, type Manifest } from 'material-icon-theme'
 import { getHighlighter } from '../utils/shikiHighlighter'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -70,13 +70,59 @@ function extractDiffsFromSession(messages: any[]): FileDiff[] {
   return diffs
 }
 
-const VSCODE_ICONS_CDN = 'https://raw.githubusercontent.com/vscode-icons/vscode-icons/master/icons/'
+const FILE_ICONS_PATH = '/file-icons/'
+const manifest: Manifest = generateManifest()
+
+// Map common file extensions to VS Code language IDs (for extensions not in manifest.fileExtensions)
+const extToLanguageId: Record<string, string> = {
+  ts: 'typescript', tsx: 'typescriptreact', js: 'javascript', jsx: 'javascriptreact',
+  py: 'python', rb: 'ruby', go: 'go', rs: 'rust', java: 'java', kt: 'kotlin',
+  swift: 'swift', cs: 'csharp', cpp: 'cpp', c: 'c', h: 'cpp', hpp: 'cpp',
+  php: 'php', sh: 'shellscript', bash: 'shellscript', zsh: 'shellscript',
+  yaml: 'yaml', yml: 'yaml', toml: 'toml', r: 'r', lua: 'lua',
+  dart: 'dart', scala: 'scala', vue: 'vue', svelte: 'svelte',
+}
+
+function resolveIconSvg(iconId: string | undefined): string {
+  if (!iconId) return 'file.svg'
+  const def = manifest.iconDefinitions?.[iconId]
+  if (!def?.iconPath) return 'file.svg'
+  return def.iconPath.replace('./../icons/', '')
+}
+
+function getIconPath(name: string, isDirectory?: boolean, isOpen?: boolean): string {
+  if (isDirectory) {
+    const folderIcon = isOpen
+      ? manifest.folderNamesExpanded?.[name.toLowerCase()] || manifest.folderExpanded
+      : manifest.folderNames?.[name.toLowerCase()] || manifest.folder
+    return resolveIconSvg(folderIcon)
+  }
+  const lowerName = name.toLowerCase()
+  // 1. Try exact file name match
+  let iconId = manifest.fileNames?.[lowerName]
+  // 2. Try full compound extension (e.g. spec.ts, module.css)
+  if (!iconId) {
+    const parts = lowerName.split('.')
+    for (let i = 1; i < parts.length; i++) {
+      const ext = parts.slice(i).join('.')
+      iconId = manifest.fileExtensions?.[ext]
+      if (iconId) break
+    }
+  }
+  // 3. Try language ID mapping
+  if (!iconId) {
+    const ext = lowerName.split('.').pop() || ''
+    const langId = extToLanguageId[ext]
+    if (langId) iconId = manifest.languageIds?.[langId]
+  }
+  // 4. Fallback to default file icon
+  if (!iconId) iconId = manifest.file
+  return resolveIconSvg(iconId)
+}
 
 function VSCodeIcon({ name, isDirectory, isOpen, className = 'w-4 h-4' }: { name: string; isDirectory?: boolean; isOpen?: boolean; className?: string }) {
-  const iconFile = isDirectory
-    ? (isOpen ? getIconForOpenFolder(name) : getIconForFolder(name)) || 'default_folder.svg'
-    : getIconForFile(name) || 'default_file.svg'
-  return <img src={`${VSCODE_ICONS_CDN}${iconFile}`} alt="" className={`${className} shrink-0`} />
+  const iconFile = getIconPath(name, isDirectory, isOpen)
+  return <img src={`${FILE_ICONS_PATH}${iconFile}`} alt="" className={`${className} shrink-0`} />
 }
 
 function detectLangFromPath(filePath: string): string {
@@ -274,6 +320,7 @@ function HtmlPreview({ filePath, cwd }: { filePath: string; cwd: string }) {
 
 function PreviewPanel({ item, cwd }: { item: PreviewItem; cwd: string }) {
   const [mode, setMode] = useState<PreviewMode>('code')
+  const isDark = useIsDark()
   const previewableType = item.type === 'file' ? getPreviewableType(item.path) : null
 
   // Auto-switch to preview for previewable file types
@@ -308,6 +355,17 @@ function PreviewPanel({ item, cwd }: { item: PreviewItem; cwd: string }) {
               >
                 <Eye className="w-3 h-3" />
               </button>
+              <button
+                onClick={async () => {
+                  const { port } = await (window as any).acpApi.fs.startStaticServer(cwd)
+                  const relativePath = item.path.startsWith(cwd) ? item.path.slice(cwd.length) : '/' + item.path.split('/').pop()
+                  window.acpApi.openExternal(`http://127.0.0.1:${port}${relativePath}`)
+                }}
+                className="p-1 rounded-sm transition-colors text-text-subtle hover:text-text-muted"
+                title="Open in browser"
+              >
+                <ExternalLink className="w-3 h-3" />
+              </button>
             </div>
           )}
         </div>
@@ -331,7 +389,6 @@ function PreviewPanel({ item, cwd }: { item: PreviewItem; cwd: string }) {
   }
 
   const fileName = item.diff.filePath.split('/').pop() || item.diff.filePath
-  const isDark = useIsDark()
   return (
     <div className="flex flex-col h-full">
       <div className="px-3 py-1.5 border-b border-border bg-panel-bg flex items-center gap-2">
@@ -447,9 +504,11 @@ function FileTree({ cwd, onFileClick }: { cwd: string; onFileClick: (path: strin
 interface OutputPreviewSidebarProps {
   activeAgentId: string | null
   onClose: () => void
+  expanded?: boolean
+  onToggleExpand?: () => void
 }
 
-export default function OutputPreviewSidebar({ activeAgentId, onClose }: OutputPreviewSidebarProps) {
+export default function OutputPreviewSidebar({ activeAgentId, onClose, expanded, onToggleExpand }: OutputPreviewSidebarProps) {
   const { agents } = useAgentConfigStore()
   const sessions = useChatStore((s) => s.sessions)
   const activeSessionId = useChatStore((s) => s.activeSessionId)
@@ -459,7 +518,16 @@ export default function OutputPreviewSidebar({ activeAgentId, onClose }: OutputP
   const cwd = agent?.cwd || ''
 
   const activeSession = sessions.find((s) => s.sessionId === activeSessionId)
-  const diffs = activeSession ? extractDiffsFromSession(activeSession.messages) : []
+  const allDiffs = activeSession ? extractDiffsFromSession(activeSession.messages) : []
+
+  // Deduplicate: keep only the last change per file path
+  const diffs = useMemo(() => {
+    const seen = new Map<string, FileDiff>()
+    for (const diff of allDiffs) {
+      seen.set(diff.filePath, diff)
+    }
+    return Array.from(seen.values())
+  }, [allDiffs])
 
   const handleFileClick = useCallback(async (filePath: string) => {
     setPreview({ type: 'file', path: filePath, content: null, loading: true })
@@ -488,15 +556,22 @@ export default function OutputPreviewSidebar({ activeAgentId, onClose }: OutputP
   const hasPreview = preview !== null
 
   return (
-    <div className={`flex h-full shrink-0 border-l border-border ${hasPreview ? 'w-[720px]' : 'w-[260px]'} transition-[width] duration-200`}>
+    <div className={`flex h-full shrink-0 border-l border-border ${expanded ? 'flex-1' : hasPreview ? 'w-[720px]' : 'w-[260px]'} transition-[width] duration-200`}>
       {/* Left: file list + changes */}
       <div className="w-[260px] shrink-0 bg-sidebar-bg flex flex-col h-full overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-3 py-2 border-b border-border">
           <span className="text-xs font-medium text-text">Output Preview</span>
-          <button onClick={onClose} className="text-text-subtle hover:text-text-muted p-0.5">
-            <X className="w-3.5 h-3.5" />
-          </button>
+          <div className="flex items-center gap-1">
+            {onToggleExpand && (
+              <button onClick={onToggleExpand} className="text-text-subtle hover:text-text-muted p-0.5" title={expanded ? 'Collapse' : 'Expand'}>
+                {expanded ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+              </button>
+            )}
+            <button onClick={onClose} className="text-text-subtle hover:text-text-muted p-0.5">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
 
         {/* CWD display */}

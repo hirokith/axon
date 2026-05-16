@@ -9,7 +9,7 @@ import { AcpClient } from './acp/client'
 import { MessageLogger } from './acp/logger'
 import { AgentConfig } from './acp/types'
 import { JsonRpcMessage } from './acp/jsonrpc'
-import { queryLogs, clearLogs, closeDb } from './db'
+import { queryLogs, clearLogs, closeDb, insertStructuredLog, queryStructuredLogs } from './db'
 import { getAgents, addAgent, updateAgent, deleteAgent, AgentConfig as StoredAgentConfig, getMcpServers, addMcpServer, updateMcpServer, deleteMcpServer, McpServerConfig as StoredMcpServerConfig } from './store'
 import { IpcChannel, LogDirection } from '../shared/constants'
 
@@ -76,8 +76,12 @@ function createWindow(): void {
 }
 
 function sendToRenderer(channel: string, ...args: any[]): void {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send(channel, ...args)
+  if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
+    try {
+      mainWindow.webContents.send(channel, ...args)
+    } catch {
+      // Window may have been disposed during reload/close
+    }
   }
 }
 
@@ -191,6 +195,27 @@ function setupAcpHandlers(): void {
     }
   })
 
+  ipcMain.handle(IpcChannel.AcpTestConnection, async (_event, config: { command: string; args?: string[]; cwd?: string; env?: Record<string, string> }) => {
+    const transport = new StdioTransport({
+      command: config.command,
+      args: config.args,
+      cwd: config.cwd,
+      env: config.env
+    })
+
+    try {
+      transport.start()
+      const client = new AcpClient(transport)
+      await client.initialize()
+      transport.close()
+      return { success: true, message: 'Connection successful! CLI exists and ACP protocol is working.' }
+    } catch (err: any) {
+      transport.close()
+      const message = err instanceof Error ? err.message : JSON.stringify(err)
+      return { success: false, message: `Connection failed: ${message}` }
+    }
+  })
+
   ipcMain.handle(IpcChannel.AcpDisconnect, async (_event, agentId: string) => {
     disconnectAgent(agentId)
     sendToRenderer('acp:connection-status', { agentId, connected: false })
@@ -207,7 +232,7 @@ function setupAcpHandlers(): void {
   ipcMain.handle(IpcChannel.AcpSendPrompt, async (_event, agentId: string, sessionId: string, text: string) => {
     const conn = connections.get(agentId)
     if (!conn) throw new Error('Not connected')
-    conn.client.sendPrompt(sessionId, text)
+    await conn.client.sendPrompt(sessionId, text)
     return { sent: true }
   })
 
@@ -254,11 +279,18 @@ app.whenReady().then(() => {
   // Log query IPC handlers
   ipcMain.handle(IpcChannel.LogsQuery, (_, options?: any) => queryLogs(options || {}))
   ipcMain.handle(IpcChannel.LogsClear, (_, options?: any) => clearLogs(options))
+  ipcMain.handle(IpcChannel.StructuredLogsInsert, (_, entry: any) => insertStructuredLog(entry))
+  ipcMain.handle(IpcChannel.StructuredLogsQuery, (_, options?: any) => queryStructuredLogs(options || {}))
 
   ipcMain.handle(IpcChannel.DialogSelectDirectory, async () => {
     const result = await dialog.showOpenDialog({ properties: ['openDirectory'] })
     if (result.canceled || result.filePaths.length === 0) return null
     return result.filePaths[0]
+  })
+
+  ipcMain.handle(IpcChannel.ShellOpenExternal, async (_event, url: string) => {
+    const { shell } = await import('electron')
+    return shell.openExternal(url)
   })
 
   ipcMain.handle(IpcChannel.FsListFiles, async (_event, dirPath: string) => {

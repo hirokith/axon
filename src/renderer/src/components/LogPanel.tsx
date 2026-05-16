@@ -12,10 +12,23 @@ export default function LogPanel() {
     setDebugMode,
     setFilter,
     clearLogs,
-    loadRawLogs
+    loadRawLogs,
+    loadStructuredLogs
   } = useLogStore()
 
   const scrollRef = useRef<HTMLDivElement>(null)
+
+  // Load persisted structured logs on mount
+  useEffect(() => {
+    const acpApi = (window as any).acpApi
+    if (acpApi?.structuredLogs?.query) {
+      acpApi.structuredLogs.query().then((entries: any[]) => {
+        if (entries && entries.length > 0) {
+          loadStructuredLogs(entries)
+        }
+      }).catch(() => {})
+    }
+  }, [loadStructuredLogs])
 
   useEffect(() => {
     if (debugMode) {

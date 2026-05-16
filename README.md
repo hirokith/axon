@@ -22,6 +22,14 @@
   <a href="./README.zh-CN.md">🇨🇳 中文文档</a>
 </p>
 
+<p align="center">
+  <img src="./screenshots/main.png" alt="Axon Screenshot – Dark Mode" width="800" />
+</p>
+
+<p align="center">
+  <img src="./screenshots/light.png" alt="Axon Screenshot – Light Mode" width="800" />
+</p>
+
 ---
 
 ## 🤔 Why Axon?
@@ -39,45 +47,43 @@ AI agents are powerful — but working with them today feels like talking to a b
 ## ✨ Features
 
 ### 💬 Chat
+
 - IDE-inspired dark/light UI — feels right at home next to VS Code
 - Full Markdown + LaTeX math rendering
 - Multi-session with persistent history (survives restarts!)
 - Streaming tokens with live thinking display
-- Per-session working directory — each conversation can target a different project
+- Per-session working directory
 
 ### 🤖 Multi-Agent
+
 - Connect and interact with **multiple agents simultaneously**
 - Tab-based UI — each agent gets its own workspace
-- Auto-connect on startup — all configured agents spin up automatically
-- Session auto-recovery — if a session is lost, it's recreated transparently
+- Auto-connect on startup, session auto-recovery
+- **Test Connection** — validate CLI + ACP handshake before going live
 
 ### 🔌 MCP Server Management
+
 - Configure MCP servers (stdio or HTTP transport)
 - Attach MCP servers to individual sessions at creation time
-- Full CRUD — add, edit, delete servers from Settings
-- JSON import mode for bulk configuration
+- Full CRUD + JSON import mode for bulk configuration
 
 ### 🔍 Agent Observability
+
 - 🟢 **Structured logs** — thoughts, messages, and tool calls, color-coded
-- 🛠️ **Tool call cards** — expandable Input/Output with Shiki syntax highlighting
-- ⏱️ **Duration tracking** — know exactly how long each tool takes
+- 🛠️ **Tool call cards** — expandable Input/Output with syntax highlighting, sequential numbering, duration + timestamp
 - 📡 **RAW mode** — see every JSON-RPC message on the wire
-
-### 🐛 Debug Mode
-- Full protocol transcript: requests, responses, notifications
-- Filter by type, search by content
-- Find bugs in seconds, not hours
-
-### 📂 File System Access
-- Browse agent working directory files
-- Read file contents directly in the app
-- Built-in static HTTP server for serving local files
+- 📂 **Output Preview** — browse files, view diffs, live HTML preview, open in system browser
 
 ### ⚙️ Configuration
+
 - Add unlimited ACP agents with custom commands, args, env vars
-- Switch between agents in one click
 - Native directory picker for CWD selection
 - Works with **any** ACP-compatible agent — zero vendor lock-in
+
+### 💾 Persistence
+
+- Session history and structured logs persisted in a local SQL.js database
+- Data lives in your OS `userData` directory — portable and private
 
 ---
 
@@ -141,7 +147,8 @@ That's it. You're running. 🎉
 | 🌈 Syntax | Shiki |
 | 📐 Math | KaTeX |
 | 📝 Markdown | react-markdown + remark-gfm |
-| 🎯 Icons | Lucide React |
+| 🎯 Icons | Lucide React + Material Icon Theme |
+| 💾 Database | SQL.js (file-backed SQLite) |
 
 ---
 

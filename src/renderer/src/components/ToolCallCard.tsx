@@ -85,7 +85,15 @@ function CodeBlock({ label, content, maxHeight = 250 }: { label: string; content
   )
 }
 
-export default function ToolCallCard({ toolCall }: { toolCall: ToolCallInfo }) {
+function formatEndTime(ts: number): string {
+  const d = new Date(ts)
+  const hh = String(d.getHours()).padStart(2, '0')
+  const mm = String(d.getMinutes()).padStart(2, '0')
+  const ss = String(d.getSeconds()).padStart(2, '0')
+  return `${hh}:${mm}:${ss}`
+}
+
+export default function ToolCallCard({ toolCall, index }: { toolCall: ToolCallInfo; index?: number }) {
   const [expanded, setExpanded] = useState(false)
   const statusClass = statusColors[toolCall.status] || 'text-text-muted'
   const isRunning = toolCall.status === 'pending' || toolCall.status === 'in_progress'
@@ -103,13 +111,14 @@ export default function ToolCallCard({ toolCall }: { toolCall: ToolCallInfo }) {
         onClick={() => setExpanded(!expanded)}
         className="w-full flex items-center gap-2 px-2 py-1.5 text-left hover:bg-surface-hover text-xs transition-colors"
       >
-        {isRunning ? (
+        {isRunning && (
           <span className="relative flex h-2 w-2">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75" />
             <span className="relative inline-flex rounded-full h-2 w-2 bg-accent" />
           </span>
-        ) : (
-          <span className={`font-mono ${statusClass}`}>●</span>
+        )}
+        {index != null && (
+          <span className="text-[10px] text-text-subtle font-mono shrink-0">#{index}</span>
         )}
         <span className="flex-1 text-text-muted truncate font-mono">
           {toolCall.title || toolCall.toolCallId}
@@ -119,7 +128,10 @@ export default function ToolCallCard({ toolCall }: { toolCall: ToolCallInfo }) {
         {!isRunning && duration != null && (
           <span className="text-[10px] text-text-subtle font-mono">{formatDuration(duration)}</span>
         )}
-        <span className={`text-xs ${statusClass}`}>{toolCall.status}</span>
+        {!isRunning && toolCall.endTime && (
+          <span className="text-[10px] text-text-subtle font-mono">{formatEndTime(toolCall.endTime)}</span>
+        )}
+        {!isRunning && <span className={`text-xs ${statusClass}`}>{toolCall.status === ToolCallStatus.Completed ? '✓' : '✗'}</span>}
         <span className="text-text-subtle">{expanded ? '▴' : '▾'}</span>
       </button>
       {expanded && (

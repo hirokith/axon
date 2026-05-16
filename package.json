@@ -42,7 +42,8 @@
       "output": "release"
     },
     "files": [
-      "out/**/*"
+      "out/**/*",
+      "node_modules/**/*"
     ],
     "mac": {
       "category": "public.app-category.developer-tools",
@@ -99,7 +100,6 @@
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
     "@tailwindcss/vite": "^4.2.4",
-    "@types/better-sqlite3": "^7.6.13",
     "@types/katex": "^0.16.8",
     "@types/node": "^25.6.0",
     "@types/react": "^19.2.14",
@@ -116,10 +116,10 @@
     "@pierre/diffs": "^1.1.21",
     "@tailwindcss/typography": "^0.5.19",
     "@types/uuid": "^10.0.0",
-    "better-sqlite3": "^12.9.0",
     "electron-store": "^8.2.0",
     "katex": "^0.16.45",
     "lucide-react": "^1.14.0",
+    "material-icon-theme": "^5.34.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-markdown": "^10.1.0",
@@ -127,8 +127,12 @@
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
     "shiki": "^4.0.2",
+    "sql.js": "^1.14.1",
     "uuid": "^14.0.0",
-    "vscode-icons-js": "^11.6.1",
     "zustand": "^5.0.13"
+  },
+  "packageManager": "pnpm@11.1.2",
+  "pnpm": {
+    "onlyBuiltDependencies": ["electron", "esbuild", "electron-winstaller"]
   }
 }
