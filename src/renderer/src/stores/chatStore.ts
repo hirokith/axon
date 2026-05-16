@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { persist, type StateStorage } from 'zustand/middleware'
+import { persist, createJSONStorage } from 'zustand/middleware'
 import { MessageRole, ToolCallStatus } from '@shared/constants'
 
 export { MessageRole, ToolCallStatus }
@@ -270,31 +270,19 @@ export const useChatStore = create<ChatState>()(
     }),
     {
       name: 'acp-chat-history',
-      storage: {
-        getItem: async (name: string) => {
+      storage: createJSONStorage(() => ({
+        getItem: async (_name: string) => {
           const data = await (window as any).acpApi.chatHistory.get()
-          if (data) return { state: data }
-
-          // One-time migration from localStorage (v0.1.0 upgrade)
-          const legacy = localStorage.getItem(name)
-          if (legacy) {
-            try {
-              const parsed = JSON.parse(legacy)
-              await (window as any).acpApi.chatHistory.set(parsed.state)
-              localStorage.removeItem(name)
-              return parsed
-            } catch {}
-          }
-
-          return null
+          return data ? JSON.stringify({ state: data }) : null
         },
-        setItem: async (_name: string, value: { state: any }) => {
-          await (window as any).acpApi.chatHistory.set(value.state)
+        setItem: async (_name: string, value: string) => {
+          const parsed = JSON.parse(value)
+          await (window as any).acpApi.chatHistory.set(parsed.state)
         },
         removeItem: async () => {
           await (window as any).acpApi.chatHistory.set(null)
         },
-      } satisfies StateStorage,
+      })),
       partialize: (state) => ({
         sessions: state.sessions.map((s) => ({ ...s, isPrompting: false })),
         activeSessionId: state.activeSessionId,
