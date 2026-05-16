@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Axon | The IDE for AI Agents</title>
+  <meta name="description" content="A gorgeous desktop client for the Agent Client Protocol. See what your AI agent thinks in real time." />
+  <meta name="theme-color" content="#09090b" />
+  <link rel="icon" href="https://raw.githubusercontent.com/hirokith/axon/main/build/icon.png" />
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+
+  <style>
+    :root {
+      --bg: #09090b;
+      --bg-panel: #121214;
+      --bg-card: #18181b;
+      --border: #27272a;
+      --border-hover: #3f3f46;
+      --fg: #fafafa;
+      --fg-muted: #a1a1aa;
+      --accent: #3b82f6;
+      --font-sans: 'Geist', -apple-system, sans-serif;
+      --font-mono: 'Geist Mono', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      background-color: var(--bg);
+      color: var(--fg);
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+      width: 100%;
+    }
+
+    main {
+      padding: 0 1rem;
+    }
+
+    /* Layout */
+    .container {
+      width: 100%;
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* Nav */
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      background: rgba(9, 9, 11, 0.8);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      padding: 16px 0;
+    }
+
+    nav .container {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 600;
+      color: var(--fg);
+      text-decoration: none;
+      font-size: 1.1rem;
+    }
+
+    .brand img {
+      width: 24px;
+      height: 24px;
+      border-radius: 6px;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 24px;
+      align-items: center;
+    }
+
+    .nav-links a {
+      color: var(--fg-muted);
+      text-decoration: none;
+      font-size: 0.9rem;
+      transition: color 0.2s;
+    }
+
+    .nav-links a:hover {
+      color: var(--fg);
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      font-weight: 500;
+      text-decoration: none;
+      transition: all 0.2s;
+      border: 1px solid transparent;
+      cursor: pointer;
+    }
+
+    .btn-primary {
+      background: var(--fg);
+      color: var(--bg);
+    }
+
+    .btn-primary:hover {
+      background: #e4e4e7;
+    }
+
+    .btn-secondary {
+      background: var(--bg-card);
+      border-color: var(--border);
+      color: var(--fg);
+    }
+
+    .btn-secondary:hover {
+      background: var(--border);
+    }
+
+    /* Hero */
+    .hero {
+      padding: 100px 0;
+      display: grid;
+      grid-template-columns: 4fr 6.5fr;
+      gap: 48px;
+      align-items: center;
+    }
+
+    .hero-content {
+      max-width: 100%;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 12px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 100px;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--fg-muted);
+      margin-bottom: 24px;
+    }
+
+    .badge::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #10b981;
+    }
+
+    .hero h1 {
+      font-size: clamp(2.5rem, 5vw, 4rem);
+      line-height: 1.1;
+      font-weight: 600;
+      letter-spacing: -0.03em;
+      margin-bottom: 24px;
+    }
+
+    .hero p {
+      font-size: 1.1rem;
+      color: var(--fg-muted);
+      margin-bottom: 32px;
+      line-height: 1.6;
+      max-width: 95%;
+    }
+
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+
+    .terminal-box {
+      background: #000;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      color: var(--fg-muted);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: border-color 0.2s, background-color 0.2s;
+      overflow-x: auto;
+      white-space: nowrap;
+      gap: 16px;
+    }
+
+    .terminal-box:hover {
+      border-color: var(--border-hover);
+      background: #0a0a0a;
+    }
+
+    .terminal-box code span {
+      color: var(--accent);
+    }
+
+    .hero-visual {
+      position: relative;
+      width: 100%;
+      max-width: 100%;
+      overflow: hidden;
+      border-radius: 12px;
+    }
+
+    .hero-visual img {
+      width: 100%;
+      height: auto;
+      display: block;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      box-shadow: 0 24px 80px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.05) inset;
+    }
+
+    /* Bento Grid Features */
+    .section-title {
+      font-size: 2rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      margin-bottom: 40px;
+    }
+
+    .bento {
+      padding: 80px 0;
+    }
+
+    .bento-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: auto auto;
+      gap: 24px;
+    }
+
+    .bento-card {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 32px;
+      transition: border-color 0.2s;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .bento-card:hover {
+      border-color: var(--border-hover);
+    }
+
+    .bento-card.large {
+      grid-column: span 2;
+    }
+
+    .bento-icon {
+      width: 40px;
+      height: 40px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 24px;
+      font-size: 1.2rem;
+    }
+
+    .bento-card h3 {
+      font-size: 1.2rem;
+      font-weight: 600;
+      margin-bottom: 12px;
+    }
+
+    .bento-card p {
+      color: var(--fg-muted);
+      font-size: 0.95rem;
+      line-height: 1.6;
+    }
+
+    .bento-card code {
+      background: #000;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: var(--font-mono);
+      font-size: 0.85em;
+      border: 1px solid var(--border);
+    }
+
+    /* Dense Info Table */
+    .info-section {
+      padding: 80px 0 120px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 64px;
+    }
+
+    .data-list {
+      list-style: none;
+    }
+
+    .data-list li {
+      display: flex;
+      justify-content: space-between;
+      padding: 16px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.95rem;
+    }
+
+    .data-list li:first-child {
+      border-top: 1px solid var(--border);
+    }
+
+    .data-label {
+      color: var(--fg);
+      font-weight: 500;
+    }
+
+    .data-value {
+      color: var(--fg-muted);
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      word-break: break-all;
+      text-align: right;
+    }
+
+    /* Footer */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 40px 0;
+      color: var(--fg-muted);
+      font-size: 0.9rem;
+    }
+
+    .footer-content {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .footer-links {
+      display: flex;
+      gap: 16px;
+    }
+
+    .footer-links a {
+      color: var(--fg-muted);
+      text-decoration: none;
+    }
+
+    .footer-links a:hover {
+      color: var(--fg);
+    }
+
+    /* Responsive */
+    @media (max-width: 1024px) {
+      .hero {
+        grid-template-columns: 1fr;
+        text-align: left;
+        padding: 40px 0;
+        gap: 40px;
+      }
+      .hero-content {
+        max-width: 100%;
+        margin: 0;
+      }
+      .hero-actions {
+        justify-content: flex-start;
+      }
+      .bento-grid {
+        grid-template-columns: 1fr;
+      }
+      .bento-card.large {
+        grid-column: span 1;
+      }
+      .info-section {
+        grid-template-columns: 1fr;
+        gap: 40px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <div class="container">
+      <a href="#" class="brand">
+        <img src="https://raw.githubusercontent.com/hirokith/axon/main/build/icon.png" alt="Axon" />
+        Axon
+      </a>
+      <div class="nav-links">
+        <a href="#features">Features</a>
+        <a href="#protocol">Protocol</a>
+        <a href="https://github.com/hirokith/axon" target="_blank" class="btn btn-secondary">GitHub</a>
+      </div>
+    </div>
+  </nav>
+
+  <main>
+    <section class="hero container">
+      <div class="hero-content">
+        <div class="badge">ACP Native Client</div>
+        <h1>The IDE for<br>AI Agents.</h1>
+        <p>Stop tailing logs in the terminal. Connect your agent to Axon and see thoughts, tool calls, and raw protocol messages in a native desktop interface.</p>
+        
+        <div class="hero-actions">
+          <a href="https://github.com/hirokith/axon/releases" class="btn btn-primary">Download App</a>
+          <a href="#features" class="btn btn-secondary">Explore Features</a>
+        </div>
+
+        <div class="terminal-box" onclick="navigator.clipboard.writeText('git clone https://github.com/hirokith/axon.git && cd axon && pnpm install && pnpm dev'); const icon = this.querySelector('svg'); const originalHTML = icon.innerHTML; icon.innerHTML = '<polyline points=\'20 6 9 17 4 12\'></polyline>'; setTimeout(() => icon.innerHTML = originalHTML, 2000);" style="cursor: pointer;" title="Click to copy">
+          <code><span>$</span> git clone hirokith/axon && pnpm dev</code>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+        </div>
+      </div>
+      
+      <div class="hero-visual">
+        <img src="https://raw.githubusercontent.com/hirokith/axon/main/screenshots/main.png" alt="Axon App Screenshot" />
+      </div>
+    </section>
+
+    <section id="features" class="bento container">
+      <h2 class="section-title">Deep Observability</h2>
+      <div class="bento-grid">
+        
+        <div class="bento-card large">
+          <div class="bento-icon">💬</div>
+          <h3>Rich IDE-like Chat Interface</h3>
+          <p>Multi-session with persistent history. Full Markdown and LaTeX math rendering. Watch tokens stream in real-time alongside a live thinking display. Each session gets its own isolated working directory.</p>
+        </div>
+
+        <div class="bento-card">
+          <div class="bento-icon">📡</div>
+          <h3>RAW Protocol Mode</h3>
+          <p>See every JSON-RPC message on the wire. No need to open Wireshark. Inspect the exact payloads being sent and received over the <code>stdio</code> transport.</p>
+        </div>
+
+        <div class="bento-card">
+          <div class="bento-icon">🔌</div>
+          <h3>MCP Server Management</h3>
+          <p>Configure Model Context Protocol servers natively. Attach MCP servers (stdio or HTTP) to individual sessions. Supports full CRUD and JSON bulk import.</p>
+        </div>
+
+        <div class="bento-card large">
+          <div class="bento-icon">🛠️</div>
+          <h3>Structured Tool Calls & Outputs</h3>
+          <p>Stop guessing what tools your agent is calling. Expandable tool call cards with syntax-highlighted inputs/outputs, sequential numbering, execution duration, and file preview modes.</p>
+        </div>
+
+      </div>
+    </section>
+
+    <section id="protocol" class="info-section container">
+      <div>
+        <h2 class="section-title" style="margin-bottom: 24px;">ACP Protocol Support</h2>
+        <p style="color: var(--fg-muted); margin-bottom: 32px;">Axon implements the Agent Client Protocol fluently, acting as the perfect client for any ACP-compatible agent.</p>
+        <ul class="data-list">
+          <li>
+            <span class="data-label">Handshake</span>
+            <span class="data-value">initialize</span>
+          </li>
+          <li>
+            <span class="data-label">Context Setup</span>
+            <span class="data-value">session/new w/ CWD</span>
+          </li>
+          <li>
+            <span class="data-label">Execution</span>
+            <span class="data-value">session/prompt</span>
+          </li>
+          <li>
+            <span class="data-label">Streaming</span>
+            <span class="data-value">session/update</span>
+          </li>
+          <li>
+            <span class="data-label">Security</span>
+            <span class="data-value">Permission dialogs</span>
+          </li>
+        </ul>
+      </div>
+
+      <div>
+        <h2 class="section-title" style="margin-bottom: 24px;">Tech Stack</h2>
+        <p style="color: var(--fg-muted); margin-bottom: 32px;">Built for performance and cross-platform compatibility.</p>
+        <ul class="data-list">
+          <li>
+            <span class="data-label">Framework</span>
+            <span class="data-value">Electron 42</span>
+          </li>
+          <li>
+            <span class="data-label">Frontend</span>
+            <span class="data-value">React 19 + TypeScript</span>
+          </li>
+          <li>
+            <span class="data-label">Styling</span>
+            <span class="data-value">Tailwind CSS v4</span>
+          </li>
+          <li>
+            <span class="data-label">Database</span>
+            <span class="data-value">SQL.js (SQLite)</span>
+          </li>
+          <li>
+            <span class="data-label">Syntax Highlighting</span>
+            <span class="data-value">Shiki</span>
+          </li>
+        </ul>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container footer-content">
+      <div class="copyright">
+        &copy; 2026 Axon. Built for agent builders.
+      </div>
+      <div class="footer-links">
+        <a href="https://github.com/hirokith/axon">GitHub</a>
+        <a href="https://agentclientprotocol.com">ACP Spec</a>
+        <a href="https://github.com/hirokith/axon/releases">Releases</a>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>
