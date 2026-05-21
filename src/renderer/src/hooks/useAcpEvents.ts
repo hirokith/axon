@@ -5,6 +5,14 @@ import { SessionUpdateKind, ToolCallStatus, LogDirection } from '@shared/constan
 
 const acpApi = (window as any).acpApi
 
+const TEXT_BATCH_INTERVAL = 100 // ms - 攒 100ms 的 chunk 再一次性更新 store
+
+interface TextBatch {
+  text: string
+  timer: ReturnType<typeof setTimeout> | null
+}
+
+
 function classifySessionUpdate(data: any): StructuredLogEntry {
   const base = {
     id: data.id || crypto.randomUUID(),
@@ -87,9 +95,64 @@ export function useAcpEvents(): void {
   const setIsPrompting = useChatStore((s) => s.setIsPrompting)
 
   const turnTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
+  // Batching buffers for text chunks: key = sessionId, value = accumulated text + flush timer
+  const agentTextBatchRef = useRef<Map<string, TextBatch>>(new Map())
+  const thoughtTextBatchRef = useRef<Map<string, TextBatch>>(new Map())
 
   useEffect(() => {
     if (!acpApi) return
+
+    function flushAgentText(sid: string) {
+      const batch = agentTextBatchRef.current.get(sid)
+      if (!batch) return
+      if (batch.timer) {
+        clearTimeout(batch.timer)
+        batch.timer = null
+      }
+      if (batch.text) {
+        appendAgentText(batch.text, sid)
+        batch.text = ''
+      }
+    }
+
+    function flushThoughtText(sid: string) {
+      const batch = thoughtTextBatchRef.current.get(sid)
+      if (!batch) return
+      if (batch.timer) {
+        clearTimeout(batch.timer)
+        batch.timer = null
+      }
+      if (batch.text) {
+        appendThoughtText(batch.text, sid)
+        batch.text = ''
+      }
+    }
+
+    function batchAgentText(text: string, sid: string | undefined) {
+      const key = sid || useChatStore.getState().activeSessionId || '__default'
+      let batch = agentTextBatchRef.current.get(key)
+      if (!batch) {
+        batch = { text: '', timer: null }
+        agentTextBatchRef.current.set(key, batch)
+      }
+      batch.text += text
+      if (!batch.timer) {
+        batch.timer = setTimeout(() => flushAgentText(key), TEXT_BATCH_INTERVAL)
+      }
+    }
+
+    function batchThoughtText(text: string, sid: string | undefined) {
+      const key = sid || useChatStore.getState().activeSessionId || '__default'
+      let batch = thoughtTextBatchRef.current.get(key)
+      if (!batch) {
+        batch = { text: '', timer: null }
+        thoughtTextBatchRef.current.set(key, batch)
+      }
+      batch.text += text
+      if (!batch.timer) {
+        batch.timer = setTimeout(() => flushThoughtText(key), TEXT_BATCH_INTERVAL)
+      }
+    }
 
     // Load existing raw logs
     acpApi.getLogEntries().then((entries: any[]) => {
@@ -140,17 +203,17 @@ export function useAcpEvents(): void {
         switch (update.sessionUpdate) {
           case SessionUpdateKind.AgentMessageChunk:
             if (update.content?.text) {
-              appendAgentText(update.content.text, sid)
+              batchAgentText(update.content.text, sid)
             }
             break
           case SessionUpdateKind.AgentThoughtChunk:
             if (update.content?.text) {
-              appendThoughtText(update.content.text, sid)
+              batchThoughtText(update.content.text, sid)
             }
             break
           case SessionUpdateKind.ThoughtMessageChunk:
             if (update.content?.text) {
-              appendThoughtText(update.content.text, sid)
+              batchThoughtText(update.content.text, sid)
             }
             break
           case SessionUpdateKind.ToolCall:
@@ -172,8 +235,10 @@ export function useAcpEvents(): void {
             break
           case SessionUpdateKind.TurnEnd:
           case SessionUpdateKind.Done:
-            // Explicit turn-end signal
+            // Flush any pending batched text before marking turn as done
             const endKey = sid || useChatStore.getState().activeSessionId || '__default'
+            flushAgentText(endKey)
+            flushThoughtText(endKey)
             const endTimer = turnTimersRef.current.get(endKey)
             if (endTimer) {
               clearTimeout(endTimer)
@@ -216,6 +281,17 @@ export function useAcpEvents(): void {
       unsubStderr()
       turnTimersRef.current.forEach((t) => clearTimeout(t))
       turnTimersRef.current.clear()
+      // Flush remaining batched text
+      agentTextBatchRef.current.forEach((batch, key) => {
+        if (batch.timer) clearTimeout(batch.timer)
+        if (batch.text) appendAgentText(batch.text, key)
+      })
+      agentTextBatchRef.current.clear()
+      thoughtTextBatchRef.current.forEach((batch, key) => {
+        if (batch.timer) clearTimeout(batch.timer)
+        if (batch.text) appendThoughtText(batch.text, key)
+      })
+      thoughtTextBatchRef.current.clear()
     }
   }, [])
 }

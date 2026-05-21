@@ -2,6 +2,25 @@ import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { MessageRole, ToolCallStatus } from '@shared/constants'
 
+const MAX_RAW_SIZE = 10 * 1024 // 10KB
+
+function truncateRaw(value: any): any {
+  if (value === undefined || value === null) return value
+  let str: string
+  if (typeof value === 'string') {
+    str = value
+  } else {
+    try {
+      str = JSON.stringify(value) ?? String(value)
+    } catch {
+      const fallback = String(value)
+      return fallback.length <= MAX_RAW_SIZE ? fallback : fallback.slice(0, MAX_RAW_SIZE) + '...[truncated]'
+    }
+  }
+  if (str.length <= MAX_RAW_SIZE) return value
+  return str.slice(0, MAX_RAW_SIZE) + '...[truncated]'
+}
+
 export { MessageRole, ToolCallStatus }
 
 export interface ToolCallInfo {
@@ -214,7 +233,7 @@ export const useChatStore = create<ChatState>()(
           sessions: updateSession(state.sessions, sessionId, state.activeSessionId, (s) => {
             const msgs = [...s.messages]
             const last = msgs[msgs.length - 1]
-            const tcWithTime = { ...tc, startTime: Date.now() }
+            const tcWithTime = { ...tc, rawInput: truncateRaw(tc.rawInput), rawOutput: truncateRaw(tc.rawOutput), startTime: Date.now() }
             if (last && last.role === MessageRole.Agent && !last.isThought && !last.text) {
               const toolCalls = [...(last.toolCalls || []), tcWithTime]
               msgs[msgs.length - 1] = { ...last, toolCalls }
@@ -240,7 +259,12 @@ export const useChatStore = create<ChatState>()(
               if (idx === -1) return msg
               const toolCalls = [...msg.toolCalls]
               const endTime = (updates.status === ToolCallStatus.Completed || updates.status === ToolCallStatus.Failed) ? Date.now() : undefined
-              toolCalls[idx] = { ...toolCalls[idx], ...updates, ...(endTime ? { endTime } : {}) }
+              const truncatedUpdates = {
+                ...updates,
+                ...(updates.rawInput !== undefined ? { rawInput: truncateRaw(updates.rawInput) } : {}),
+                ...(updates.rawOutput !== undefined ? { rawOutput: truncateRaw(updates.rawOutput) } : {}),
+              }
+              toolCalls[idx] = { ...toolCalls[idx], ...truncatedUpdates, ...(endTime ? { endTime } : {}) }
               return { ...msg, toolCalls }
             })
             return { ...s, messages: msgs }
@@ -270,19 +294,36 @@ export const useChatStore = create<ChatState>()(
     }),
     {
       name: 'acp-chat-history',
-      storage: createJSONStorage(() => ({
-        getItem: async (_name: string) => {
-          const data = await (window as any).acpApi.chatHistory.get()
-          return data ? JSON.stringify({ state: data }) : null
-        },
-        setItem: async (_name: string, value: string) => {
-          const parsed = JSON.parse(value)
-          await (window as any).acpApi.chatHistory.set(parsed.state)
-        },
-        removeItem: async () => {
-          await (window as any).acpApi.chatHistory.set(null)
-        },
-      })),
+      storage: createJSONStorage(() => {
+        let debounceTimer: ReturnType<typeof setTimeout> | null = null
+        let pendingValue: string | null = null
+        return {
+          getItem: async (_name: string) => {
+            const data = await (window as any).acpApi.chatHistory.get()
+            return data ? JSON.stringify({ state: data }) : null
+          },
+          setItem: async (_name: string, value: string) => {
+            pendingValue = value
+            if (debounceTimer) return
+            debounceTimer = setTimeout(async () => {
+              debounceTimer = null
+              if (pendingValue) {
+                const parsed = JSON.parse(pendingValue)
+                pendingValue = null
+                await (window as any).acpApi.chatHistory.set(parsed.state)
+              }
+            }, 3000)
+          },
+          removeItem: async () => {
+            if (debounceTimer) {
+              clearTimeout(debounceTimer)
+              debounceTimer = null
+              pendingValue = null
+            }
+            await (window as any).acpApi.chatHistory.set(null)
+          },
+        }
+      }),
       partialize: (state) => ({
         sessions: state.sessions.map((s) => ({ ...s, isPrompting: false })),
         activeSessionId: state.activeSessionId,
