@@ -13,7 +13,8 @@ function truncateRaw(value: any): any {
     try {
       str = JSON.stringify(value) ?? String(value)
     } catch {
-      str = String(value)
+      const fallback = String(value)
+      return fallback.length <= MAX_RAW_SIZE ? fallback : fallback.slice(0, MAX_RAW_SIZE) + '...[truncated]'
     }
   }
   if (str.length <= MAX_RAW_SIZE) return value
