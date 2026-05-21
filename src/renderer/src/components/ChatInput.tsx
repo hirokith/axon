@@ -59,7 +59,7 @@ export default function ChatInput() {
     }
     addUserMessage(prompt)
     setIsPrompting(true)
-    const model = selectedModel || undefined
+    const model = selectedModel || (availableModels.length > 0 ? availableModels[0] : undefined)
     try {
       await (window as any).acpApi.sendPrompt(activeAgentId, activeSessionId, prompt, model)
     } catch (e: any) {

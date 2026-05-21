@@ -66,7 +66,7 @@ export default function SessionSidebar({ activeAgentId }: { activeAgentId: strin
       )
       addSession(result.sessionId, dialogAgentId, agentName)
       // Extract available models from session response
-      if (result.models?.availableModels) {
+      if (Array.isArray(result.models?.availableModels) && result.models.availableModels.length > 0) {
         const modelIds = result.models.availableModels.map((m: any) => m.modelId || m.name)
         updateConnectedAgentModels(dialogAgentId, modelIds)
       } else if (result.configOptions) {

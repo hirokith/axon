@@ -132,7 +132,7 @@ export class AcpClient extends EventEmitter {
     return this.sendRequest('session/set_config_option', { sessionId, configId, value })
   }
 
-  sendPrompt(sessionId: string, text: string, model?: string): Promise<void> {
+  sendPrompt(sessionId: string, text: string): Promise<void> {
     return new Promise((resolve, reject) => {
       const id = this.nextId++
       const params: any = {
