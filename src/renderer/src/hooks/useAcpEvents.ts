@@ -104,20 +104,28 @@ export function useAcpEvents(): void {
 
     function flushAgentText(sid: string) {
       const batch = agentTextBatchRef.current.get(sid)
-      if (batch && batch.text) {
+      if (!batch) return
+      if (batch.timer) {
+        clearTimeout(batch.timer)
+        batch.timer = null
+      }
+      if (batch.text) {
         appendAgentText(batch.text, sid)
         batch.text = ''
       }
-      if (batch) batch.timer = null
     }
 
     function flushThoughtText(sid: string) {
       const batch = thoughtTextBatchRef.current.get(sid)
-      if (batch && batch.text) {
+      if (!batch) return
+      if (batch.timer) {
+        clearTimeout(batch.timer)
+        batch.timer = null
+      }
+      if (batch.text) {
         appendThoughtText(batch.text, sid)
         batch.text = ''
       }
-      if (batch) batch.timer = null
     }
 
     function batchAgentText(text: string, sid: string | undefined) {

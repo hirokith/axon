@@ -6,7 +6,16 @@ const MAX_RAW_SIZE = 10 * 1024 // 10KB
 
 function truncateRaw(value: any): any {
   if (value === undefined || value === null) return value
-  const str = typeof value === 'string' ? value : JSON.stringify(value)
+  let str: string
+  if (typeof value === 'string') {
+    str = value
+  } else {
+    try {
+      str = JSON.stringify(value) ?? String(value)
+    } catch {
+      str = String(value)
+    }
+  }
   if (str.length <= MAX_RAW_SIZE) return value
   return str.slice(0, MAX_RAW_SIZE) + '...[truncated]'
 }
