@@ -64,6 +64,7 @@ export interface SessionData {
 export interface ConnectedAgent {
   agentId: string
   name: string
+  models?: string[]
 }
 
 interface ChatState {
@@ -74,7 +75,8 @@ interface ChatState {
   sessionCounter: number
   pendingNewSessionAgentId: string | null
 
-  addConnectedAgent: (agentId: string, name: string) => void
+  addConnectedAgent: (agentId: string, name: string, models?: string[]) => void
+  updateConnectedAgentModels: (agentId: string, models: string[]) => void
   removeConnectedAgent: (agentId: string) => void
   isAgentConnected: (agentId: string) => boolean
 
@@ -117,11 +119,18 @@ export const useChatStore = create<ChatState>()(
       sessionCounter: 0,
       pendingNewSessionAgentId: null,
 
-      addConnectedAgent: (agentId, name) =>
+      addConnectedAgent: (agentId, name, models?) =>
         set((state) => {
           if (state.connectedAgents.some((a) => a.agentId === agentId)) return state
-          return { connectedAgents: [...state.connectedAgents, { agentId, name }] }
+          return { connectedAgents: [...state.connectedAgents, { agentId, name, models }] }
         }),
+
+      updateConnectedAgentModels: (agentId, models) =>
+        set((state) => ({
+          connectedAgents: state.connectedAgents.map((a) =>
+            a.agentId === agentId ? { ...a, models } : a
+          ),
+        })),
 
       removeConnectedAgent: (agentId) =>
         set((state) => ({

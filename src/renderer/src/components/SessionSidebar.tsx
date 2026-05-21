@@ -14,6 +14,7 @@ export default function SessionSidebar({ activeAgentId }: { activeAgentId: strin
   const removeSession = useChatStore((s) => s.removeSession)
   const pendingNewSessionAgentId = useChatStore((s) => s.pendingNewSessionAgentId)
   const setPendingNewSessionAgentId = useChatStore((s) => s.setPendingNewSessionAgentId)
+  const updateConnectedAgentModels = useChatStore((s) => s.updateConnectedAgentModels)
   const agents = useAgentConfigStore((s) => s.agents)
 
   // New session dialog state
@@ -64,10 +65,22 @@ export default function SessionSidebar({ activeAgentId }: { activeAgentId: strin
         Object.keys(options).length > 0 ? options : undefined
       )
       addSession(result.sessionId, dialogAgentId, agentName)
+      // Extract available models from session response
+      if (result.models?.availableModels) {
+        const modelIds = result.models.availableModels.map((m: any) => m.modelId || m.name)
+        updateConnectedAgentModels(dialogAgentId, modelIds)
+      } else if (result.configOptions) {
+        // Fallback: stable ACP spec uses configOptions with category "model"
+        const modelOption = result.configOptions.find((o: any) => o.category === 'model' || o.id === 'model')
+        if (modelOption?.options) {
+          const modelIds = modelOption.options.map((o: any) => o.id || o.name)
+          updateConnectedAgentModels(dialogAgentId, modelIds)
+        }
+      }
     } catch (e) {
       console.error('createSession error:', e)
     }
-  }, [dialogAgentId, newCwd, selectedMcpIds, mcpServersAll, addSession, connectedAgents])
+  }, [dialogAgentId, newCwd, selectedMcpIds, mcpServersAll, addSession, connectedAgents, updateConnectedAgentModels])
 
   const activeAgentSessions = activeAgentId
     ? sessions.filter((s) => s.agentId === activeAgentId).slice().reverse()

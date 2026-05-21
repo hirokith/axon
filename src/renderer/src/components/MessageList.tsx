@@ -71,8 +71,32 @@ function MessageBubble({ message }: { message: ChatMessage }) {
   )
 }
 
+function ThoughtBlock({ text }: { text: string }) {
+  const [expanded, setExpanded] = useState(false)
+  return (
+    <div className="mb-1.5">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center gap-1 text-[11px] text-thought/60 hover:text-thought/80 transition-colors"
+      >
+        <span>{expanded ? '▾' : '▸'}</span>
+        <span>Thinking</span>
+        {!expanded && (
+          <span className="text-text-subtle ml-1 truncate max-w-[300px]">
+            {text.slice(0, 60)}...
+          </span>
+        )}
+      </button>
+      {expanded && (
+        <div className="mt-1 ml-3 pl-2 border-l border-thought/20 text-xs text-text-muted/70 italic whitespace-pre-wrap">
+          {text}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function AgentGroup({ items }: { items: ChatMessage[] }) {
-  const [showThoughts, setShowThoughts] = useState(false)
   const isDark = useIsDark()
   const combinedText = items.filter((m) => !m.isThought && m.text).map((m) => m.text).join('')
   const lastTimestamp = items[items.length - 1]?.timestamp
@@ -122,25 +146,7 @@ function AgentGroup({ items }: { items: ChatMessage[] }) {
 
       {segments.map((seg, si) =>
         seg.type === 'thought' ? (
-          <div key={si} className="mb-1.5">
-            <button
-              onClick={() => setShowThoughts(!showThoughts)}
-              className="flex items-center gap-1 text-[11px] text-thought/60 hover:text-thought/80 transition-colors"
-            >
-              <span>{showThoughts ? '▾' : '▸'}</span>
-              <span>Thinking</span>
-              {!showThoughts && (
-                <span className="text-text-subtle ml-1 truncate max-w-[300px]">
-                  {seg.text.slice(0, 60)}...
-                </span>
-              )}
-            </button>
-            {showThoughts && (
-              <div className="mt-1 ml-3 pl-2 border-l border-thought/20 text-xs text-text-muted/70 italic whitespace-pre-wrap">
-                {seg.text}
-              </div>
-            )}
-          </div>
+          <ThoughtBlock key={si} text={seg.text} />
         ) : (
           <div key={si}>
             {seg.msg.text && (
@@ -227,7 +233,7 @@ export default function MessageList() {
   const showLoading = isPrompting && (!lastMsg || lastMsg.role === MessageRole.User)
 
   return (
-    <div ref={containerRef} className="flex-1 overflow-y-auto">
+    <div ref={containerRef} className="flex-1 overflow-y-auto select-text">
       {renderGroups.map((group, gi) => (
         <div key={gi} className="border-b border-border">
           {group.type === 'user' ? (

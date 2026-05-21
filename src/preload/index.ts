@@ -9,8 +9,8 @@ const acpApi = {
   testConnection: (config: { command: string; args?: string[]; cwd?: string; env?: Record<string, string> }) =>
     ipcRenderer.invoke(IpcChannel.AcpTestConnection, config),
   createSession: (agentId: string, options?: { cwd?: string; mcpServers?: any[] }) => ipcRenderer.invoke(IpcChannel.AcpCreateSession, agentId, options),
-  sendPrompt: (agentId: string, sessionId: string, text: string) =>
-    ipcRenderer.invoke(IpcChannel.AcpSendPrompt, agentId, sessionId, text),
+  sendPrompt: (agentId: string, sessionId: string, text: string, model?: string) =>
+    ipcRenderer.invoke(IpcChannel.AcpSendPrompt, agentId, sessionId, text, model),
   cancelPrompt: (agentId: string, sessionId: string) =>
     ipcRenderer.invoke(IpcChannel.AcpCancelPrompt, agentId, sessionId),
   respondPermission: (agentId: string, id: number | string, outcome: string) =>
