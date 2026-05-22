@@ -232,9 +232,20 @@ function setupAcpHandlers(): void {
     return conn.client.createSession(cwd, mcpServers)
   })
 
-  ipcMain.handle(IpcChannel.AcpSendPrompt, async (_event, agentId: string, sessionId: string, text: string) => {
+  ipcMain.handle(IpcChannel.AcpSendPrompt, async (_event, agentId: string, sessionId: string, text: string, model?: string) => {
     const conn = connections.get(agentId)
     if (!conn) throw new Error('Not connected')
+    if (model) {
+      try {
+        await conn.client.setModel(sessionId, model)
+      } catch {
+        try {
+          await conn.client.setConfigOption(sessionId, 'model', model)
+        } catch {
+          // Agent doesn't support model switching, proceed with default
+        }
+      }
+    }
     await conn.client.sendPrompt(sessionId, text)
     return { sent: true }
   })

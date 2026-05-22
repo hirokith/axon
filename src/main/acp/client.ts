@@ -124,17 +124,26 @@ export class AcpClient extends EventEmitter {
     })
   }
 
+  setModel(sessionId: string, modelId: string): Promise<void> {
+    return this.sendRequest('session/set_model', { sessionId, modelId })
+  }
+
+  setConfigOption(sessionId: string, configId: string, value: string): Promise<void> {
+    return this.sendRequest('session/set_config_option', { sessionId, configId, value })
+  }
+
   sendPrompt(sessionId: string, text: string): Promise<void> {
     return new Promise((resolve, reject) => {
       const id = this.nextId++
+      const params: any = {
+        sessionId,
+        prompt: [{ type: 'text', text }]
+      }
       const request: JsonRpcRequest = {
         jsonrpc: '2.0',
         id,
         method: 'session/prompt',
-        params: {
-          sessionId,
-          prompt: [{ type: 'text', text }]
-        }
+        params
       }
       this.pendingRequests.set(id, {
         resolve: () => resolve(),

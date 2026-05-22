@@ -46,6 +46,8 @@ function App(): JSX.Element {
   const connectedAgents = useChatStore((s) => s.connectedAgents)
   const addConnectedAgent = useChatStore((s) => s.addConnectedAgent)
   const setPendingNewSessionAgentId = useChatStore((s) => s.setPendingNewSessionAgentId)
+  const switchSession = useChatStore((s) => s.switchSession)
+  const sessions = useChatStore((s) => s.sessions)
 
   const [activeAgentId, setActiveAgentId] = useState<string | null>(null)
   const [connectingAgents, setConnectingAgents] = useState<Set<string>>(new Set())
@@ -143,7 +145,15 @@ function App(): JSX.Element {
             return (
               <button
                 key={agent.id}
-                onClick={() => { setActiveAgentId(agent.id); setView('agents') }}
+                onClick={() => {
+                  setActiveAgentId(agent.id); setView('agents')
+                  const agentSessions = sessions.filter((s) => s.agentId === agent.id)
+                  if (agentSessions.length > 0) {
+                    switchSession(agentSessions[agentSessions.length - 1].sessionId)
+                  } else if (connectedAgents.some((a) => a.agentId === agent.id)) {
+                    setPendingNewSessionAgentId(agent.id)
+                  }
+                }}
                 className={`flex items-center gap-1.5 px-3 h-full text-xs font-medium border-r border-border transition-colors ${
                   view === 'agents' && activeAgentId === agent.id
                     ? 'bg-editor-bg text-text border-t-2 border-t-accent'
@@ -151,8 +161,8 @@ function App(): JSX.Element {
                 }`}
               >
                 <span
-                  className={`w-1.5 h-1.5 rounded-full ${
-                    isConnected ? 'bg-success' : isConnecting ? 'bg-warning animate-pulse' : isFailed ? 'bg-error' : 'bg-text-subtle'
+                  className={`w-2 h-2 rounded-full ring-2 ${
+                    isConnected ? 'bg-success ring-success/30' : isConnecting ? 'bg-warning ring-warning/30 animate-pulse' : isFailed ? 'bg-error ring-error/30' : 'bg-text-subtle ring-text-subtle/20'
                   }`}
                 />
                 {agent.name}
