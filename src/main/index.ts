@@ -13,6 +13,10 @@ import { queryLogs, clearLogs, closeDb, insertStructuredLog, queryStructuredLogs
 import { getAgents, addAgent, updateAgent, deleteAgent, AgentConfig as StoredAgentConfig, getMcpServers, addMcpServer, updateMcpServer, deleteMcpServer, McpServerConfig as StoredMcpServerConfig } from './store'
 import { IpcChannel, LogDirection } from '../shared/constants'
 
+function ts(): string {
+  return new Date().toISOString()
+}
+
 // Fix PATH for packaged app (macOS/Linux GUI launches don't inherit shell PATH)
 function fixPath(): void {
   if (process.platform === 'win32') return
@@ -114,17 +118,17 @@ function setupAcpHandlers(): void {
     const originalSend = transport.send.bind(transport)
     transport.send = (msg: JsonRpcMessage) => {
       logger.log(LogDirection.Outgoing, msg, agentId)
-      console.log('[ACP outgoing]', JSON.stringify(msg))
+      console.log(`[${ts()}] [ACP outgoing]`, JSON.stringify(msg))
       originalSend(msg)
     }
 
     transport.on('message', (msg: JsonRpcMessage) => {
       logger.log(LogDirection.Incoming, msg, agentId)
-      console.log('[ACP incoming]', JSON.stringify(msg))
+      console.log(`[${ts()}] [ACP incoming]`, JSON.stringify(msg))
     })
 
     transport.on('stderr', (text: string) => {
-      console.log('[ACP stderr]', text)
+      console.log(`[${ts()}] [ACP stderr]`, text)
       sendToRenderer('acp:stderr', { agentId, text })
     })
 
@@ -140,7 +144,7 @@ function setupAcpHandlers(): void {
     transport.on('error', (err: Error) => {
       // Log errors but don't treat them as disconnections.
       // Only the 'close' event means the connection is truly gone.
-      console.error('[ACP transport error]', agentId, err.message)
+      console.error(`[${ts()}] [ACP transport error]`, agentId, err.message)
     })
 
     transport.start()
@@ -151,13 +155,13 @@ function setupAcpHandlers(): void {
     })
 
     client.on('incoming-request', (msg: any) => {
-      console.log('[ACP incoming-request]', msg.method)
+      console.log(`[${ts()}] [ACP incoming-request]`, msg.method)
       const conn = connections.get(agentId)
       if (conn) {
         try {
           conn.transport.send({ jsonrpc: '2.0', id: msg.id, result: {} })
         } catch (err) {
-          console.error('[ACP] Failed to send response:', err)
+          console.error(`[${ts()}] [ACP] Failed to send response:`, err)
         }
       }
       sendToRenderer('acp:turn-complete', {
@@ -177,7 +181,7 @@ function setupAcpHandlers(): void {
     })
 
     client.on('error', (err: Error) => {
-      console.error('[ACP client error]', agentId, err.message)
+      console.error(`[${ts()}] [ACP client error]`, agentId, err.message)
     })
 
     connections.set(agentId, { transport, client, cwd })
@@ -324,7 +328,6 @@ app.whenReady().then(() => {
     try {
       const entries = fs.readdirSync(dirPath, { withFileTypes: true })
       return entries
-        .filter((e) => !e.name.startsWith('.'))
         .map((e) => ({ name: e.name, isDirectory: e.isDirectory() }))
         .sort((a, b) => {
           if (a.isDirectory && !b.isDirectory) return -1

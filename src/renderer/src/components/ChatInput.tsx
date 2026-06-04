@@ -116,7 +116,7 @@ export default function ChatInput() {
           placeholder={isAgentConnected ? 'Message... (Enter to send)' : 'Connect to an agent first'}
           disabled={!isAgentConnected || !activeSessionId}
           rows={3}
-          className="flex-1 min-w-0 resize-none bg-panel-bg border border-border text-text text-xs px-2 py-1.5 rounded-sm placeholder:text-text-subtle focus:outline-none focus:border-accent disabled:opacity-40 font-[inherit] leading-[1.4]"
+          className="flex-1 min-w-0 resize-none bg-surface border border-border text-text text-xs px-2 py-1.5 rounded-sm placeholder:text-text-subtle focus:outline-none focus:border-accent disabled:opacity-40 font-[inherit] leading-[1.4]"
         />
         <div className="flex items-center justify-end gap-1.5">
           {availableModels.length > 0 && (

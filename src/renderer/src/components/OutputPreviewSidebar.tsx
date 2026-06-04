@@ -312,7 +312,7 @@ function HtmlPreview({ filePath, cwd }: { filePath: string; cwd: string }) {
     <iframe
       src={iframeUrl}
       className="w-full h-full border-0"
-      sandbox="allow-scripts allow-forms"
+      sandbox="allow-scripts allow-forms allow-same-origin"
       title="HTML Preview"
     />
   )
@@ -412,6 +412,18 @@ function FileTree({ cwd, onFileClick }: { cwd: string; onFileClick: (path: strin
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set())
   const [subFiles, setSubFiles] = useState<Record<string, FileEntry[]>>({})
   const [loading, setLoading] = useState(false)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; path: string } | null>(null)
+
+  useEffect(() => {
+    if (!contextMenu) return
+    const handler = () => setContextMenu(null)
+    document.addEventListener('click', handler)
+    document.addEventListener('contextmenu', handler)
+    return () => {
+      document.removeEventListener('click', handler)
+      document.removeEventListener('contextmenu', handler)
+    }
+  }, [contextMenu])
 
   const loadFiles = useCallback(async () => {
     setLoading(true)
@@ -460,6 +472,11 @@ function FileTree({ cwd, onFileClick }: { cwd: string; onFileClick: (path: strin
               onFileClick(fullPath)
             }
           }}
+          onContextMenu={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            setContextMenu({ x: e.clientX, y: e.clientY, path: fullPath })
+          }}
         >
           {entry.isDirectory ? (
             isExpanded ? <ChevronDown className="w-3 h-3 shrink-0" /> : <ChevronRight className="w-3 h-3 shrink-0" />
@@ -483,7 +500,7 @@ function FileTree({ cwd, onFileClick }: { cwd: string; onFileClick: (path: strin
   }
 
   return (
-    <div>
+    <div className="relative">
       <div className="flex items-center justify-between px-2 py-1 border-b border-border">
         <span className="text-[10px] text-text-subtle uppercase tracking-wide">Files</span>
         <button onClick={loadFiles} className="text-text-subtle hover:text-text-muted p-0.5" title="Refresh">
@@ -497,6 +514,22 @@ function FileTree({ cwd, onFileClick }: { cwd: string; onFileClick: (path: strin
           files.map((entry) => renderEntry(entry, cwd, 0))
         )}
       </div>
+      {contextMenu && (
+        <div
+          className="fixed z-50 bg-surface border border-border rounded shadow-lg py-1 min-w-[160px]"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+        >
+          <button
+            className="w-full text-left px-3 py-1 text-xs text-text hover:bg-surface-hover"
+            onClick={() => {
+              navigator.clipboard.writeText(contextMenu.path)
+              setContextMenu(null)
+            }}
+          >
+            Copy Full Path
+          </button>
+        </div>
+      )}
     </div>
   )
 }

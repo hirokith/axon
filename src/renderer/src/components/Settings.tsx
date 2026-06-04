@@ -286,9 +286,18 @@ export default function Settings() {
         <div className="space-y-1">
           {agents.map(agent => (
             <div key={agent.id} className="group flex items-center justify-between px-3 py-2 border border-border rounded-sm bg-sidebar-bg hover:bg-surface-hover transition-colors">
-              <div>
-                <p className="text-xs font-medium text-text">{agent.name}</p>
-                <p className="text-[11px] text-text-muted font-mono">{agent.command} {agent.args.join(' ')}</p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => updateAgent(agent.id, { enabled: agent.enabled === false })}
+                  className={`relative w-7 h-4 rounded-full transition-colors ${agent.enabled !== false ? 'bg-accent' : 'bg-border'}`}
+                >
+                  <span className={`absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white transition-transform ${agent.enabled !== false ? 'translate-x-3' : 'translate-x-0'}`} />
+                </button>
+                <div>
+                  <p className={`text-xs font-medium ${agent.enabled !== false ? 'text-text' : 'text-text-muted'}`}>{agent.name}</p>
+                  <p className="text-[11px] text-text-muted font-mono">{agent.command} {agent.args.join(' ')}</p>
+                </div>
               </div>
               <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                 <button

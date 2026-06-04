@@ -7,6 +7,7 @@ export interface AgentConfig {
   args: string[]
   cwd?: string
   env?: Record<string, string>
+  enabled?: boolean
 }
 
 interface AgentConfigState {
