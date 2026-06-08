@@ -174,16 +174,22 @@ const AgentGroup = memo(function AgentGroup({ items }: { items: ChatMessage[] })
   )
 }, (prev, next) => {
   if (prev.items.length !== next.items.length) return false
-  const prevLast = prev.items[prev.items.length - 1]
-  const nextLast = next.items[next.items.length - 1]
-  if (!prevLast || !nextLast) return false
-  if (prevLast.id !== nextLast.id) return false
-  if (prevLast.text !== nextLast.text) return false
-  if ((prevLast.toolCalls?.length || 0) !== (nextLast.toolCalls?.length || 0)) return false
-  const prevTC = prevLast.toolCalls?.[prevLast.toolCalls.length - 1]
-  const nextTC = nextLast.toolCalls?.[nextLast.toolCalls.length - 1]
-  if (prevTC?.status !== nextTC?.status) return false
-  if (prevTC?.rawOutput !== nextTC?.rawOutput) return false
+  for (let i = 0; i < prev.items.length; i++) {
+    const a = prev.items[i]
+    const b = next.items[i]
+    if (a.id !== b.id) return false
+    if (a.text !== b.text) return false
+    if (a.isThought !== b.isThought) return false
+    const aTC = a.toolCalls || []
+    const bTC = b.toolCalls || []
+    if (aTC.length !== bTC.length) return false
+    if (aTC.length > 0) {
+      const lastA = aTC[aTC.length - 1]
+      const lastB = bTC[bTC.length - 1]
+      if (lastA?.status !== lastB?.status) return false
+      if (lastA?.rawOutput !== lastB?.rawOutput) return false
+    }
+  }
   return true
 })
 
@@ -241,10 +247,10 @@ export default function MessageList() {
   useEffect(() => {
     if (!isUserScrolledUp.current && renderGroups.length > 0) {
       requestAnimationFrame(() => {
-        virtualizer.scrollToIndex(renderGroups.length - 1, { align: 'end' })
+        parentRef.current?.scrollTo({ top: parentRef.current.scrollHeight })
       })
     }
-  }, [renderGroups.length, messages[messages.length - 1]?.text])
+  }, [renderGroups.length, messages[messages.length - 1]?.text, messages[messages.length - 1]?.toolCalls, isPrompting])
 
   const handleScroll = useCallback(() => {
     const el = parentRef.current

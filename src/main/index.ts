@@ -276,7 +276,11 @@ function setupAcpHandlers(): void {
 
 app.whenReady().then(async () => {
   // Migrate old blob format to per-session storage before anything else
-  await migrateFromBlobIfNeeded()
+  try {
+    await migrateFromBlobIfNeeded()
+  } catch (err) {
+    console.error('[DB migration] failed:', err)
+  }
 
   if (process.platform === 'darwin') {
     const icon = nativeImage.createFromPath(join(__dirname, '../../build/icon.png'))

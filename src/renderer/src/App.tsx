@@ -54,17 +54,18 @@ function App(): JSX.Element {
   const [activeAgentId, setActiveAgentId] = useState<string | null>(null)
   const [connectingAgents, setConnectingAgents] = useState<Set<string>>(new Set())
   const [failedAgents, setFailedAgents] = useState<Set<string>>(new Set())
+  const [dbReady, setDbReady] = useState(false)
 
   useAcpEvents()
 
   useEffect(() => {
     fetchAgents()
-    initFromDb()
+    initFromDb().then(() => setDbReady(true))
   }, [])
 
   // Auto-connect agents on startup
   useEffect(() => {
-    if (agents.length === 0) return
+    if (!dbReady || agents.length === 0) return
     agents.forEach((agent) => {
       if (agent.enabled === false) return
       const alreadyConnected = connectedAgents.some((c) => c.agentId === agent.id)
@@ -72,7 +73,7 @@ function App(): JSX.Element {
         connectAgent(agent.id)
       }
     })
-  }, [agents])
+  }, [agents, dbReady])
 
   // Set active agent tab to first available
   useEffect(() => {
@@ -177,7 +178,7 @@ function App(): JSX.Element {
                   }`}
                 />
                 <span className={isDisabled && !isConnected ? 'opacity-50' : ''}>{agent.name}</span>
-                {isConnected && !isConnecting && (
+                {isConnected && !isConnecting && !isDisabled && (
                   <button
                     onClick={(e) => { e.stopPropagation(); reconnectAgent(agent.id) }}
                     className="text-[10px] text-text-muted hover:text-accent ml-1"
@@ -186,7 +187,7 @@ function App(): JSX.Element {
                     ↻
                   </button>
                 )}
-                {!isConnected && !isConnecting && !isFailed && (
+                {!isConnected && !isConnecting && !isFailed && !isDisabled && (
                   <button
                     onClick={(e) => { e.stopPropagation(); connectAgent(agent.id) }}
                     className="text-[10px] text-text-muted hover:text-accent ml-1"

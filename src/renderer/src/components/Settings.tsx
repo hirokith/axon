@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useAgentConfigStore, AgentConfig } from '../stores/agentConfigStore'
 import { useMcpConfigStore, McpServerConfig, McpTransport } from '../stores/mcpConfigStore'
+import { useChatStore } from '../stores/chatStore'
 
 interface AgentFormData {
   name: string
@@ -289,7 +290,17 @@ export default function Settings() {
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => updateAgent(agent.id, { enabled: agent.enabled === false })}
+                  onClick={() => {
+                    const willDisable = agent.enabled !== false
+                    updateAgent(agent.id, { enabled: !willDisable })
+                    if (willDisable) {
+                      const connected = useChatStore.getState().connectedAgents
+                      if (connected.some((c) => c.agentId === agent.id)) {
+                        ;(window as any).acpApi.disconnect(agent.id).catch(() => {})
+                        useChatStore.getState().removeConnectedAgent(agent.id)
+                      }
+                    }
+                  }}
                   className={`relative w-7 h-4 rounded-full transition-colors ${agent.enabled !== false ? 'bg-accent' : 'bg-border'}`}
                 >
                   <span className={`absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white transition-transform ${agent.enabled !== false ? 'translate-x-3' : 'translate-x-0'}`} />

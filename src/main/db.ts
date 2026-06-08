@@ -491,7 +491,7 @@ export async function migrateFromBlobIfNeeded(): Promise<boolean> {
   }
   stmt.free()
 
-  if (!oldData || !oldData.sessions || oldData.sessions.length === 0) {
+  if (!oldData || !Array.isArray(oldData.sessions) || oldData.sessions.length === 0) {
     return false
   }
 

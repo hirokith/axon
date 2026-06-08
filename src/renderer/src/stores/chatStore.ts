@@ -368,12 +368,20 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   },
 
   updateSessionId: (oldSessionId, newSessionId) => {
-    set((state) => ({
-      sessionMetas: state.sessionMetas.map((s) =>
-        s.sessionId === oldSessionId ? { ...s, sessionId: newSessionId } : s
-      ),
-      activeSessionId: state.activeSessionId === oldSessionId ? newSessionId : state.activeSessionId,
-    }))
+    set((state) => {
+      const newPromptingMap = { ...state.isPromptingMap }
+      if (oldSessionId in newPromptingMap) {
+        newPromptingMap[newSessionId] = newPromptingMap[oldSessionId]
+        delete newPromptingMap[oldSessionId]
+      }
+      return {
+        sessionMetas: state.sessionMetas.map((s) =>
+          s.sessionId === oldSessionId ? { ...s, sessionId: newSessionId } : s
+        ),
+        activeSessionId: state.activeSessionId === oldSessionId ? newSessionId : state.activeSessionId,
+        isPromptingMap: newPromptingMap,
+      }
+    })
     if (get().activeSessionId === newSessionId) {
       localStorage.setItem('axon-active-session-id', newSessionId)
     }
