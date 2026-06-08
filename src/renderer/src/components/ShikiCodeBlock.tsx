@@ -70,7 +70,7 @@ export default function ShikiCodeBlock({ label, content, maxHeight = 250 }: Shik
       </div>
       {html ? (
         <div
-          className="rounded-sm border border-border overflow-auto text-xs font-mono leading-relaxed [&_pre]:!bg-transparent [&_pre]:p-2 [&_pre]:m-0 [&_pre]:min-w-full [&_pre]:w-fit [&_code]:!bg-transparent"
+          className="rounded-sm border border-border overflow-auto text-xs font-mono leading-relaxed [&_pre]:!bg-transparent [&_pre]:p-2 [&_pre]:m-0 [&_pre]:whitespace-pre-wrap [&_pre]:break-words [&_code]:!bg-transparent"
           style={{ maxHeight }}
           dangerouslySetInnerHTML={{ __html: html }}
         />

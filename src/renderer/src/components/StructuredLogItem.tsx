@@ -59,7 +59,7 @@ export default function StructuredLogItem({ entry }: { entry: StructuredLogEntry
             <div>
               <span className="text-[10px] text-text-subtle uppercase">Input</span>
               <pre
-                className="text-[11px] bg-panel-bg border border-border rounded-sm p-1.5 mt-0.5 overflow-x-auto font-mono"
+                className="text-[11px] bg-panel-bg border border-border rounded-sm p-1.5 mt-0.5 overflow-x-auto whitespace-pre-wrap break-words font-mono"
                 dangerouslySetInnerHTML={{ __html: highlightJson(entry.rawInput) }}
               />
             </div>
@@ -68,7 +68,7 @@ export default function StructuredLogItem({ entry }: { entry: StructuredLogEntry
             <div>
               <span className="text-[10px] text-text-subtle uppercase">Output</span>
               <pre
-                className="text-[11px] bg-panel-bg border border-border rounded-sm p-1.5 mt-0.5 overflow-x-auto font-mono"
+                className="text-[11px] bg-panel-bg border border-border rounded-sm p-1.5 mt-0.5 overflow-x-auto whitespace-pre-wrap break-words font-mono"
                 dangerouslySetInnerHTML={{ __html: highlightJson(entry.rawOutput) }}
               />
             </div>
