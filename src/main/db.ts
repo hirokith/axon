@@ -76,6 +76,32 @@ async function getDb(): Promise<SqlJsDatabase> {
       )
     `)
 
+    db.run(`
+      CREATE TABLE IF NOT EXISTS sessions (
+        session_id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        agent_name TEXT,
+        label TEXT NOT NULL DEFAULT 'New Session',
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    `)
+
+    db.run(`
+      CREATE TABLE IF NOT EXISTS messages (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        role TEXT NOT NULL,
+        text TEXT NOT NULL DEFAULT '',
+        timestamp INTEGER NOT NULL,
+        is_thought INTEGER NOT NULL DEFAULT 0,
+        tool_calls TEXT,
+        seq INTEGER NOT NULL,
+        FOREIGN KEY (session_id) REFERENCES sessions(session_id) ON DELETE CASCADE
+      )
+    `)
+    db.run(`CREATE INDEX IF NOT EXISTS idx_messages_session_seq ON messages(session_id, seq ASC)`)
+
     return db
   })()
 
@@ -346,4 +372,180 @@ export async function setChatHistory(data: any): Promise<void> {
     )
   }
   scheduleSave()
+}
+
+// --- Per-session storage (new architecture) ---
+
+export interface SessionMetaRow {
+  sessionId: string
+  agentId: string
+  agentName: string | null
+  label: string
+  createdAt: number
+  updatedAt: number
+}
+
+export interface MessageRow {
+  id: string
+  sessionId: string
+  role: string
+  text: string
+  timestamp: number
+  isThought: boolean
+  toolCalls: any[] | null
+  seq: number
+}
+
+export async function getAllSessionMetas(): Promise<SessionMetaRow[]> {
+  const d = await getDb()
+  const stmt = d.prepare(
+    `SELECT session_id as sessionId, agent_id as agentId, agent_name as agentName,
+            label, created_at as createdAt, updated_at as updatedAt
+     FROM sessions ORDER BY updated_at DESC`
+  )
+  const rows: SessionMetaRow[] = []
+  while (stmt.step()) {
+    rows.push(stmt.getAsObject() as any)
+  }
+  stmt.free()
+  return rows
+}
+
+export async function getSessionMessages(sessionId: string): Promise<MessageRow[]> {
+  const d = await getDb()
+  const stmt = d.prepare(
+    `SELECT id, session_id as sessionId, role, text, timestamp,
+            is_thought as isThought, tool_calls as toolCalls, seq
+     FROM messages WHERE session_id = ? ORDER BY seq ASC`
+  )
+  stmt.bind([sessionId])
+  const rows: MessageRow[] = []
+  while (stmt.step()) {
+    const row = stmt.getAsObject() as any
+    row.isThought = !!row.isThought
+    if (row.toolCalls) {
+      try { row.toolCalls = JSON.parse(row.toolCalls) } catch { row.toolCalls = null }
+    }
+    rows.push(row)
+  }
+  stmt.free()
+  return rows
+}
+
+export async function upsertSessionMeta(meta: SessionMetaRow): Promise<void> {
+  const d = await getDb()
+  d.run(
+    `INSERT OR REPLACE INTO sessions (session_id, agent_id, agent_name, label, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [meta.sessionId, meta.agentId, meta.agentName, meta.label, meta.createdAt, meta.updatedAt]
+  )
+  scheduleSave()
+}
+
+export async function deleteSessionFromDb(sessionId: string): Promise<void> {
+  const d = await getDb()
+  d.run('DELETE FROM messages WHERE session_id = ?', [sessionId])
+  d.run('DELETE FROM sessions WHERE session_id = ?', [sessionId])
+  scheduleSave()
+}
+
+export async function saveSessionMessages(sessionId: string, messages: MessageRow[]): Promise<void> {
+  const d = await getDb()
+  d.run('DELETE FROM messages WHERE session_id = ?', [sessionId])
+  if (messages.length === 0) { scheduleSave(); return }
+  const insertStmt = d.prepare(
+    `INSERT OR REPLACE INTO messages (id, session_id, role, text, timestamp, is_thought, tool_calls, seq)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  )
+  for (const msg of messages) {
+    insertStmt.run([
+      msg.id,
+      sessionId,
+      msg.role,
+      msg.text,
+      msg.timestamp,
+      msg.isThought ? 1 : 0,
+      msg.toolCalls ? JSON.stringify(msg.toolCalls) : null,
+      msg.seq
+    ])
+  }
+  insertStmt.free()
+  scheduleSave()
+}
+
+export async function updateSessionLabel(sessionId: string, label: string): Promise<void> {
+  const d = await getDb()
+  d.run('UPDATE sessions SET label = ?, updated_at = ? WHERE session_id = ?', [label, Date.now(), sessionId])
+  scheduleSave()
+}
+
+export async function migrateFromBlobIfNeeded(): Promise<boolean> {
+  const d = await getDb()
+
+  const stmt = d.prepare('SELECT value FROM chat_history WHERE key = ?')
+  stmt.bind(['state'])
+  let oldData: any = null
+  if (stmt.step()) {
+    const row = stmt.getAsObject() as any
+    try { oldData = JSON.parse(row.value) } catch {}
+  }
+  stmt.free()
+
+  if (!oldData || !oldData.sessions || oldData.sessions.length === 0) {
+    return false
+  }
+
+  const countStmt = d.prepare('SELECT COUNT(*) as cnt FROM sessions')
+  countStmt.step()
+  const count = (countStmt.getAsObject() as any).cnt
+  countStmt.free()
+  if (count > 0) {
+    d.run('DELETE FROM chat_history WHERE key = ?', ['state'])
+    scheduleSave()
+    return false
+  }
+
+  d.run('BEGIN TRANSACTION')
+  try {
+    for (const session of oldData.sessions) {
+      const now = Date.now()
+      const createdAt = session.messages?.[0]?.timestamp || now
+
+      d.run(
+        `INSERT OR IGNORE INTO sessions (session_id, agent_id, agent_name, label, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [session.sessionId, session.agentId, session.agentName || null, session.label || 'New Session', createdAt, now]
+      )
+
+      if (session.messages && session.messages.length > 0) {
+        const insertMsg = d.prepare(
+          `INSERT OR IGNORE INTO messages (id, session_id, role, text, timestamp, is_thought, tool_calls, seq)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        for (let idx = 0; idx < session.messages.length; idx++) {
+          const msg = session.messages[idx]
+          insertMsg.run([
+            msg.id,
+            session.sessionId,
+            msg.role,
+            msg.text || '',
+            msg.timestamp,
+            msg.isThought ? 1 : 0,
+            msg.toolCalls ? JSON.stringify(msg.toolCalls) : null,
+            idx
+          ])
+        }
+        insertMsg.free()
+      }
+    }
+
+    d.run('DELETE FROM chat_history WHERE key = ?', ['state'])
+    d.run('COMMIT')
+  } catch (e) {
+    d.run('ROLLBACK')
+    throw e
+  }
+
+  persistDb()
+  return true
 }

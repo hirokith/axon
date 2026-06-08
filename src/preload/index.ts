@@ -40,6 +40,16 @@ const acpApi = {
     get: () => ipcRenderer.invoke(IpcChannel.ChatHistoryGet),
     set: (data: any) => ipcRenderer.invoke(IpcChannel.ChatHistorySet, data),
   },
+  sessions: {
+    getAllMetas: () => ipcRenderer.invoke(IpcChannel.SessionMetasGetAll),
+    getMessages: (sessionId: string) => ipcRenderer.invoke(IpcChannel.SessionMessagesGet, sessionId),
+    upsertMeta: (meta: any) => ipcRenderer.invoke(IpcChannel.SessionMetaUpsert, meta),
+    delete: (sessionId: string) => ipcRenderer.invoke(IpcChannel.SessionDelete, sessionId),
+    updateLabel: (sessionId: string, label: string) => ipcRenderer.invoke(IpcChannel.SessionUpdateLabel, sessionId, label),
+  },
+  messages: {
+    sync: (sessionId: string, messages: any[]) => ipcRenderer.invoke(IpcChannel.MessagesSync, sessionId, messages),
+  },
   selectDirectory: () => ipcRenderer.invoke(IpcChannel.DialogSelectDirectory),
   openExternal: (url: string) => ipcRenderer.invoke(IpcChannel.ShellOpenExternal, url),
   fs: {

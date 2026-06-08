@@ -10,11 +10,12 @@ export default function ChatInput() {
   const dropdownRef = useRef<HTMLDivElement>(null)
   const connectedAgents = useChatStore((s) => s.connectedAgents)
   const activeSessionId = useChatStore((s) => s.activeSessionId)
-  const activeSession = useChatStore((s) =>
-    s.sessions.find((ses) => ses.sessionId === s.activeSessionId)
-  )
-  const isPrompting = activeSession?.isPrompting ?? false
-  const activeAgentId = activeSession?.agentId
+  const sessionMetas = useChatStore((s) => s.sessionMetas)
+  const isPromptingMap = useChatStore((s) => s.isPromptingMap)
+
+  const activeMeta = sessionMetas.find((m) => m.sessionId === activeSessionId)
+  const isPrompting = (activeSessionId && isPromptingMap[activeSessionId]) ?? false
+  const activeAgentId = activeMeta?.agentId
   const addUserMessage = useChatStore((s) => s.addUserMessage)
   const setIsPrompting = useChatStore((s) => s.setIsPrompting)
   const updateSessionId = useChatStore((s) => s.updateSessionId)
@@ -64,7 +65,6 @@ export default function ChatInput() {
       await (window as any).acpApi.sendPrompt(activeAgentId, activeSessionId, prompt, model)
     } catch (e: any) {
       const errMsg = e?.message || String(e)
-      // If session not found on agent side, recreate and retry
       if (errMsg.toLowerCase().includes('not found')) {
         console.log('[ChatInput] Session not found, recreating...')
         try {

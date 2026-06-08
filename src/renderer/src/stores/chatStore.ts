@@ -1,5 +1,4 @@
 import { create } from 'zustand'
-import { persist, createJSONStorage } from 'zustand/middleware'
 import { MessageRole, ToolCallStatus } from '@shared/constants'
 
 const MAX_RAW_SIZE = 10 * 1024 // 10KB
@@ -52,13 +51,13 @@ export interface PermissionRequestInfo {
   options: Array<{ optionId: string; name: string; kind: string }>
 }
 
-export interface SessionData {
+export interface SessionMeta {
   sessionId: string
   agentId: string
-  messages: ChatMessage[]
-  isPrompting: boolean
-  label: string
   agentName?: string
+  label: string
+  createdAt: number
+  updatedAt: number
 }
 
 export interface ConnectedAgent {
@@ -69,11 +68,16 @@ export interface ConnectedAgent {
 
 interface ChatState {
   connectedAgents: ConnectedAgent[]
-  sessions: SessionData[]
+  sessionMetas: SessionMeta[]
   activeSessionId: string | null
+  activeMessages: ChatMessage[]
+  isLoadingMessages: boolean
+  isPromptingMap: Record<string, boolean>
   permissionRequests: PermissionRequestInfo[]
   sessionCounter: number
   pendingNewSessionAgentId: string | null
+
+  initFromDb: () => Promise<void>
 
   addConnectedAgent: (agentId: string, name: string, models?: string[]) => void
   updateConnectedAgentModels: (agentId: string, models: string[]) => void
@@ -81,7 +85,7 @@ interface ChatState {
   isAgentConnected: (agentId: string) => boolean
 
   addSession: (sessionId: string, agentId: string, agentName?: string) => void
-  switchSession: (sessionId: string) => void
+  switchSession: (sessionId: string) => Promise<void>
   removeSession: (sessionId: string) => void
   updateSessionId: (oldSessionId: string, newSessionId: string) => void
   setPendingNewSessionAgentId: (agentId: string | null) => void
@@ -98,246 +102,442 @@ interface ChatState {
   clearSessions: () => void
 }
 
-function updateSession(
-  sessions: SessionData[],
-  targetId: string | null | undefined,
-  activeSessionId: string | null,
-  updater: (session: SessionData) => SessionData
-): SessionData[] {
-  const id = targetId || activeSessionId
-  if (!id) return sessions
-  return sessions.map((s) => (s.sessionId === id ? updater(s) : s))
+// --- Persistence helpers (module-level) ---
+
+const acpApi = () => (window as any).acpApi
+
+let flushTimer: ReturnType<typeof setTimeout> | null = null
+const FLUSH_DEBOUNCE_MS = 3000
+
+function schedulePersist() {
+  if (flushTimer) return
+  flushTimer = setTimeout(() => {
+    flushTimer = null
+    flushActiveMessages()
+  }, FLUSH_DEBOUNCE_MS)
 }
 
-export const useChatStore = create<ChatState>()(
-  persist(
-    (set, get) => ({
-      connectedAgents: [],
-      sessions: [],
-      activeSessionId: null,
-      permissionRequests: [],
-      sessionCounter: 0,
-      pendingNewSessionAgentId: null,
+function flushActiveMessages() {
+  const { activeSessionId, activeMessages } = useChatStore.getState()
+  if (!activeSessionId || activeMessages.length === 0) return
+  const rows = activeMessages.map((msg, idx) => ({
+    id: msg.id,
+    sessionId: activeSessionId,
+    role: msg.role,
+    text: msg.text,
+    timestamp: msg.timestamp,
+    isThought: msg.isThought || false,
+    toolCalls: msg.toolCalls || null,
+    seq: idx,
+  }))
+  acpApi().messages.sync(activeSessionId, rows).catch((e: any) => {
+    console.error('[chatStore] Failed to persist messages:', e)
+  })
+}
 
-      addConnectedAgent: (agentId, name, models?) =>
-        set((state) => {
-          if (state.connectedAgents.some((a) => a.agentId === agentId)) return state
-          return { connectedAgents: [...state.connectedAgents, { agentId, name, models }] }
-        }),
+// Buffer for messages targeting non-active sessions during streaming
+const inactiveBuffers = new Map<string, ChatMessage[]>()
 
-      updateConnectedAgentModels: (agentId, models) =>
-        set((state) => ({
-          connectedAgents: state.connectedAgents.map((a) =>
-            a.agentId === agentId ? { ...a, models } : a
-          ),
-        })),
+function flushInactiveBuffer(sessionId: string) {
+  const buffer = inactiveBuffers.get(sessionId)
+  if (!buffer || buffer.length === 0) return
+  const rows = buffer.map((msg, idx) => ({
+    id: msg.id,
+    sessionId,
+    role: msg.role,
+    text: msg.text,
+    timestamp: msg.timestamp,
+    isThought: msg.isThought || false,
+    toolCalls: msg.toolCalls || null,
+    seq: 10000 + idx, // high seq to append after existing messages; will be rewritten on next full sync
+  }))
+  acpApi().messages.sync(sessionId, rows).catch((e: any) => {
+    console.error('[chatStore] Failed to flush inactive buffer:', e)
+  })
+  inactiveBuffers.delete(sessionId)
+}
 
-      removeConnectedAgent: (agentId) =>
-        set((state) => ({
-          connectedAgents: state.connectedAgents.filter((a) => a.agentId !== agentId),
-        })),
+// For inactive sessions: append text or create message
+function appendToInactiveBuffer(sessionId: string, text: string, isThought?: boolean) {
+  let buffer = inactiveBuffers.get(sessionId) || []
+  const last = buffer[buffer.length - 1]
+  const matchesLast = last && last.role === MessageRole.Agent && !!last.isThought === !!isThought && !(last.toolCalls?.length)
+  if (matchesLast) {
+    buffer[buffer.length - 1] = { ...last, text: last.text + text }
+  } else {
+    buffer.push({
+      id: crypto.randomUUID(),
+      role: MessageRole.Agent,
+      text,
+      timestamp: Date.now(),
+      ...(isThought ? { isThought: true } : {}),
+    })
+  }
+  inactiveBuffers.set(sessionId, buffer)
+}
 
-      isAgentConnected: (agentId) => get().connectedAgents.some((a) => a.agentId === agentId),
+export const useChatStore = create<ChatState>()((set, get) => ({
+  connectedAgents: [],
+  sessionMetas: [],
+  activeSessionId: null,
+  activeMessages: [],
+  isLoadingMessages: false,
+  isPromptingMap: {},
+  permissionRequests: [],
+  sessionCounter: 0,
+  pendingNewSessionAgentId: null,
 
-      addSession: (sessionId, agentId, agentName?) =>
-        set((state) => {
-          const newCounter = state.sessionCounter + 1
-          const newSession: SessionData = {
-            sessionId,
-            agentId,
-            messages: [],
-            isPrompting: false,
-            label: 'New Session',
-            agentName,
-          }
-          return {
-            sessions: [...state.sessions, newSession],
-            activeSessionId: sessionId,
-            sessionCounter: newCounter,
-          }
-        }),
+  initFromDb: async () => {
+    try {
+      const metas: any[] = await acpApi().sessions.getAllMetas()
+      const sessionMetas: SessionMeta[] = metas.map((m) => ({
+        sessionId: m.sessionId,
+        agentId: m.agentId,
+        agentName: m.agentName || undefined,
+        label: m.label,
+        createdAt: m.createdAt,
+        updatedAt: m.updatedAt,
+      }))
+      set({ sessionMetas, sessionCounter: sessionMetas.length })
 
-      switchSession: (sessionId) => set({ activeSessionId: sessionId }),
-
-      removeSession: (sessionId) =>
-        set((state) => {
-          const sessions = state.sessions.filter((s) => s.sessionId !== sessionId)
-          let activeSessionId = state.activeSessionId
-          if (activeSessionId === sessionId) {
-            activeSessionId = sessions.length > 0 ? sessions[sessions.length - 1].sessionId : null
-          }
-          return { sessions, activeSessionId }
-        }),
-
-      updateSessionId: (oldSessionId, newSessionId) =>
-        set((state) => ({
-          sessions: state.sessions.map((s) =>
-            s.sessionId === oldSessionId ? { ...s, sessionId: newSessionId } : s
-          ),
-          activeSessionId: state.activeSessionId === oldSessionId ? newSessionId : state.activeSessionId,
-        })),
-
-      addUserMessage: (text, sessionId?) =>
-        set((state) => ({
-          sessions: updateSession(state.sessions, sessionId, state.activeSessionId, (s) => {
-            const isFirstUserMessage = !s.messages.some((m) => m.role === MessageRole.User)
-            const newLabel = isFirstUserMessage ? text.slice(0, 30) + (text.length > 30 ? '...' : '') : s.label
-            return {
-              ...s,
-              label: newLabel,
-              messages: [
-                ...s.messages,
-                {
-                  id: crypto.randomUUID(),
-                  role: MessageRole.User,
-                  text,
-                  timestamp: Date.now(),
-                },
-              ],
-            }
-          }),
-        })),
-
-      appendAgentText: (text, sessionId?) =>
-        set((state) => ({
-          sessions: updateSession(state.sessions, sessionId, state.activeSessionId, (s) => {
-            const msgs = [...s.messages]
-            const last = msgs[msgs.length - 1]
-            if (last && last.role === MessageRole.Agent && !last.isThought && !(last.toolCalls && last.toolCalls.length > 0)) {
-              msgs[msgs.length - 1] = { ...last, text: last.text + text }
-            } else {
-              msgs.push({
-                id: crypto.randomUUID(),
-                role: MessageRole.Agent,
-                text,
-                timestamp: Date.now(),
-              })
-            }
-            return { ...s, messages: msgs }
-          }),
-        })),
-
-      appendThoughtText: (text, sessionId?) =>
-        set((state) => ({
-          sessions: updateSession(state.sessions, sessionId, state.activeSessionId, (s) => {
-            const msgs = [...s.messages]
-            const last = msgs[msgs.length - 1]
-            if (last && last.role === MessageRole.Agent && last.isThought) {
-              msgs[msgs.length - 1] = { ...last, text: last.text + text }
-            } else {
-              msgs.push({
-                id: crypto.randomUUID(),
-                role: MessageRole.Agent,
-                text,
-                timestamp: Date.now(),
-                isThought: true,
-              })
-            }
-            return { ...s, messages: msgs }
-          }),
-        })),
-
-      addToolCall: (tc, sessionId?) =>
-        set((state) => ({
-          sessions: updateSession(state.sessions, sessionId, state.activeSessionId, (s) => {
-            const msgs = [...s.messages]
-            const last = msgs[msgs.length - 1]
-            const tcWithTime = { ...tc, rawInput: truncateRaw(tc.rawInput), rawOutput: truncateRaw(tc.rawOutput), startTime: Date.now() }
-            if (last && last.role === MessageRole.Agent && !last.isThought && !last.text) {
-              const toolCalls = [...(last.toolCalls || []), tcWithTime]
-              msgs[msgs.length - 1] = { ...last, toolCalls }
-            } else {
-              msgs.push({
-                id: crypto.randomUUID(),
-                role: MessageRole.Agent,
-                text: '',
-                timestamp: Date.now(),
-                toolCalls: [tcWithTime],
-              })
-            }
-            return { ...s, messages: msgs }
-          }),
-        })),
-
-      updateToolCall: (toolCallId, updates, sessionId?) =>
-        set((state) => ({
-          sessions: updateSession(state.sessions, sessionId, state.activeSessionId, (s) => {
-            const msgs = s.messages.map((msg) => {
-              if (!msg.toolCalls) return msg
-              const idx = msg.toolCalls.findIndex((tc) => tc.toolCallId === toolCallId)
-              if (idx === -1) return msg
-              const toolCalls = [...msg.toolCalls]
-              const endTime = (updates.status === ToolCallStatus.Completed || updates.status === ToolCallStatus.Failed) ? Date.now() : undefined
-              const truncatedUpdates = {
-                ...updates,
-                ...(updates.rawInput !== undefined ? { rawInput: truncateRaw(updates.rawInput) } : {}),
-                ...(updates.rawOutput !== undefined ? { rawOutput: truncateRaw(updates.rawOutput) } : {}),
-              }
-              toolCalls[idx] = { ...toolCalls[idx], ...truncatedUpdates, ...(endTime ? { endTime } : {}) }
-              return { ...msg, toolCalls }
-            })
-            return { ...s, messages: msgs }
-          }),
-        })),
-
-      setIsPrompting: (v, sessionId?) =>
-        set((state) => ({
-          sessions: updateSession(state.sessions, sessionId, state.activeSessionId, (s) => ({
-            ...s,
-            isPrompting: v,
-          })),
-        })),
-
-      addPermissionRequest: (req) =>
-        set((state) => ({
-          permissionRequests: [...state.permissionRequests, req],
-        })),
-
-      removePermissionRequest: (id) =>
-        set((state) => ({
-          permissionRequests: state.permissionRequests.filter((r) => r.id !== id),
-        })),
-
-      clearSessions: () => set({ sessions: [], activeSessionId: null, sessionCounter: 0, permissionRequests: [] }),
-      setPendingNewSessionAgentId: (agentId) => set({ pendingNewSessionAgentId: agentId }),
-    }),
-    {
-      name: 'acp-chat-history',
-      storage: createJSONStorage(() => {
-        let debounceTimer: ReturnType<typeof setTimeout> | null = null
-        let pendingValue: string | null = null
-        return {
-          getItem: async (_name: string) => {
-            const data = await (window as any).acpApi.chatHistory.get()
-            return data ? JSON.stringify({ state: data }) : null
-          },
-          setItem: async (_name: string, value: string) => {
-            pendingValue = value
-            if (debounceTimer) return
-            debounceTimer = setTimeout(async () => {
-              debounceTimer = null
-              if (pendingValue) {
-                const parsed = JSON.parse(pendingValue)
-                pendingValue = null
-                await (window as any).acpApi.chatHistory.set(parsed.state)
-              }
-            }, 3000)
-          },
-          removeItem: async () => {
-            if (debounceTimer) {
-              clearTimeout(debounceTimer)
-              debounceTimer = null
-              pendingValue = null
-            }
-            await (window as any).acpApi.chatHistory.set(null)
-          },
+      // Load active session's messages if we have a stored one
+      const stored = localStorage.getItem('axon-active-session-id')
+      if (stored && sessionMetas.some((m) => m.sessionId === stored)) {
+        set({ activeSessionId: stored, isLoadingMessages: true })
+        const rows = await acpApi().sessions.getMessages(stored)
+        if (get().activeSessionId === stored) {
+          set({
+            activeMessages: rows.map((r: any) => ({
+              id: r.id,
+              role: r.role as MessageRole,
+              text: r.text,
+              timestamp: r.timestamp,
+              isThought: r.isThought || undefined,
+              toolCalls: r.toolCalls || undefined,
+            })),
+            isLoadingMessages: false,
+          })
         }
-      }),
-      partialize: (state) => ({
-        sessions: state.sessions.map((s) => ({ ...s, isPrompting: false })),
-        activeSessionId: state.activeSessionId,
-        sessionCounter: state.sessionCounter,
-      }),
+      } else if (sessionMetas.length > 0) {
+        const first = sessionMetas[0]
+        set({ activeSessionId: first.sessionId, isLoadingMessages: true })
+        localStorage.setItem('axon-active-session-id', first.sessionId)
+        const rows = await acpApi().sessions.getMessages(first.sessionId)
+        if (get().activeSessionId === first.sessionId) {
+          set({
+            activeMessages: rows.map((r: any) => ({
+              id: r.id,
+              role: r.role as MessageRole,
+              text: r.text,
+              timestamp: r.timestamp,
+              isThought: r.isThought || undefined,
+              toolCalls: r.toolCalls || undefined,
+            })),
+            isLoadingMessages: false,
+          })
+        }
+      }
+    } catch (e) {
+      console.error('[chatStore] initFromDb failed:', e)
     }
-  )
-)
+  },
+
+  addConnectedAgent: (agentId, name, models?) =>
+    set((state) => {
+      if (state.connectedAgents.some((a) => a.agentId === agentId)) return state
+      return { connectedAgents: [...state.connectedAgents, { agentId, name, models }] }
+    }),
+
+  updateConnectedAgentModels: (agentId, models) =>
+    set((state) => ({
+      connectedAgents: state.connectedAgents.map((a) =>
+        a.agentId === agentId ? { ...a, models } : a
+      ),
+    })),
+
+  removeConnectedAgent: (agentId) =>
+    set((state) => ({
+      connectedAgents: state.connectedAgents.filter((a) => a.agentId !== agentId),
+    })),
+
+  isAgentConnected: (agentId) => get().connectedAgents.some((a) => a.agentId === agentId),
+
+  addSession: (sessionId, agentId, agentName?) => {
+    const now = Date.now()
+    const meta: SessionMeta = {
+      sessionId,
+      agentId,
+      agentName,
+      label: 'New Session',
+      createdAt: now,
+      updatedAt: now,
+    }
+
+    // Flush current active session first
+    if (get().activeSessionId && get().activeMessages.length > 0) {
+      flushActiveMessages()
+    }
+
+    set((state) => ({
+      sessionMetas: [meta, ...state.sessionMetas],
+      activeSessionId: sessionId,
+      activeMessages: [],
+      isLoadingMessages: false,
+      sessionCounter: state.sessionCounter + 1,
+    }))
+    localStorage.setItem('axon-active-session-id', sessionId)
+
+    // Persist meta to DB
+    acpApi().sessions.upsertMeta({
+      sessionId, agentId, agentName: agentName || null, label: 'New Session', createdAt: now, updatedAt: now
+    }).catch((e: any) => console.error('[chatStore] upsertMeta failed:', e))
+  },
+
+  switchSession: async (sessionId: string) => {
+    const state = get()
+    if (state.activeSessionId === sessionId && state.activeMessages.length > 0 && !state.isLoadingMessages) return
+
+    // Flush current session's messages
+    if (state.activeSessionId && state.activeMessages.length > 0) {
+      flushActiveMessages()
+    }
+
+    set({ activeSessionId: sessionId, isLoadingMessages: true, activeMessages: [] })
+    localStorage.setItem('axon-active-session-id', sessionId)
+
+    try {
+      const rows = await acpApi().sessions.getMessages(sessionId)
+
+      // Race condition guard
+      if (get().activeSessionId !== sessionId) return
+
+      // Merge any inactive buffer
+      const buffer = inactiveBuffers.get(sessionId) || []
+      inactiveBuffers.delete(sessionId)
+
+      const messages: ChatMessage[] = rows.map((r: any) => ({
+        id: r.id,
+        role: r.role as MessageRole,
+        text: r.text,
+        timestamp: r.timestamp,
+        isThought: r.isThought || undefined,
+        toolCalls: r.toolCalls || undefined,
+      }))
+
+      set({ activeMessages: [...messages, ...buffer], isLoadingMessages: false })
+    } catch (e) {
+      console.error('[chatStore] switchSession load failed:', e)
+      if (get().activeSessionId === sessionId) {
+        set({ isLoadingMessages: false })
+      }
+    }
+  },
+
+  removeSession: (sessionId) => {
+    set((state) => {
+      const sessionMetas = state.sessionMetas.filter((s) => s.sessionId !== sessionId)
+      let activeSessionId = state.activeSessionId
+      let activeMessages = state.activeMessages
+      if (activeSessionId === sessionId) {
+        activeSessionId = sessionMetas.length > 0 ? sessionMetas[0].sessionId : null
+        activeMessages = []
+      }
+      if (activeSessionId) {
+        localStorage.setItem('axon-active-session-id', activeSessionId)
+      } else {
+        localStorage.removeItem('axon-active-session-id')
+      }
+      return { sessionMetas, activeSessionId, activeMessages }
+    })
+
+    // Delete from DB
+    acpApi().sessions.delete(sessionId).catch((e: any) => console.error('[chatStore] delete failed:', e))
+    inactiveBuffers.delete(sessionId)
+
+    // Load new active session messages if needed
+    const { activeSessionId } = get()
+    if (activeSessionId && get().activeMessages.length === 0) {
+      get().switchSession(activeSessionId)
+    }
+  },
+
+  updateSessionId: (oldSessionId, newSessionId) => {
+    set((state) => ({
+      sessionMetas: state.sessionMetas.map((s) =>
+        s.sessionId === oldSessionId ? { ...s, sessionId: newSessionId } : s
+      ),
+      activeSessionId: state.activeSessionId === oldSessionId ? newSessionId : state.activeSessionId,
+    }))
+    if (get().activeSessionId === newSessionId) {
+      localStorage.setItem('axon-active-session-id', newSessionId)
+    }
+    // Update in DB: delete old, insert new
+    const meta = get().sessionMetas.find((m) => m.sessionId === newSessionId)
+    if (meta) {
+      acpApi().sessions.delete(oldSessionId).catch(() => {})
+      acpApi().sessions.upsertMeta({
+        sessionId: newSessionId, agentId: meta.agentId, agentName: meta.agentName || null,
+        label: meta.label, createdAt: meta.createdAt, updatedAt: Date.now()
+      }).catch(() => {})
+    }
+  },
+
+  addUserMessage: (text, sessionId?) => {
+    const state = get()
+    const targetSid = sessionId || state.activeSessionId
+    if (!targetSid) return
+
+    if (targetSid !== state.activeSessionId) {
+      // Non-active session: buffer it
+      const buffer = inactiveBuffers.get(targetSid) || []
+      buffer.push({ id: crypto.randomUUID(), role: MessageRole.User, text, timestamp: Date.now() })
+      inactiveBuffers.set(targetSid, buffer)
+      return
+    }
+
+    set((s) => {
+      const isFirstUserMessage = !s.activeMessages.some((m) => m.role === MessageRole.User)
+      const newLabel = isFirstUserMessage ? text.slice(0, 30) + (text.length > 30 ? '...' : '') : undefined
+
+      const newMessages = [
+        ...s.activeMessages,
+        { id: crypto.randomUUID(), role: MessageRole.User, text, timestamp: Date.now() },
+      ]
+
+      const updates: Partial<ChatState> = { activeMessages: newMessages }
+      if (newLabel) {
+        updates.sessionMetas = s.sessionMetas.map((m) =>
+          m.sessionId === targetSid ? { ...m, label: newLabel, updatedAt: Date.now() } : m
+        )
+        // Persist label
+        acpApi().sessions.updateLabel(targetSid, newLabel).catch(() => {})
+      }
+      return updates as any
+    })
+    schedulePersist()
+  },
+
+  appendAgentText: (text, sessionId?) => {
+    const state = get()
+    const targetSid = sessionId || state.activeSessionId
+    if (!targetSid) return
+
+    if (targetSid !== state.activeSessionId) {
+      appendToInactiveBuffer(targetSid, text)
+      return
+    }
+
+    set((s) => {
+      const msgs = [...s.activeMessages]
+      const last = msgs[msgs.length - 1]
+      if (last && last.role === MessageRole.Agent && !last.isThought && !(last.toolCalls && last.toolCalls.length > 0)) {
+        msgs[msgs.length - 1] = { ...last, text: last.text + text }
+      } else {
+        msgs.push({ id: crypto.randomUUID(), role: MessageRole.Agent, text, timestamp: Date.now() })
+      }
+      return { activeMessages: msgs }
+    })
+    schedulePersist()
+  },
+
+  appendThoughtText: (text, sessionId?) => {
+    const state = get()
+    const targetSid = sessionId || state.activeSessionId
+    if (!targetSid) return
+
+    if (targetSid !== state.activeSessionId) {
+      appendToInactiveBuffer(targetSid, text, true)
+      return
+    }
+
+    set((s) => {
+      const msgs = [...s.activeMessages]
+      const last = msgs[msgs.length - 1]
+      if (last && last.role === MessageRole.Agent && last.isThought) {
+        msgs[msgs.length - 1] = { ...last, text: last.text + text }
+      } else {
+        msgs.push({ id: crypto.randomUUID(), role: MessageRole.Agent, text, timestamp: Date.now(), isThought: true })
+      }
+      return { activeMessages: msgs }
+    })
+    schedulePersist()
+  },
+
+  addToolCall: (tc, sessionId?) => {
+    const state = get()
+    const targetSid = sessionId || state.activeSessionId
+    if (!targetSid || targetSid !== state.activeSessionId) return
+
+    set((s) => {
+      const msgs = [...s.activeMessages]
+      const last = msgs[msgs.length - 1]
+      const tcWithTime = { ...tc, rawInput: truncateRaw(tc.rawInput), rawOutput: truncateRaw(tc.rawOutput), startTime: Date.now() }
+      if (last && last.role === MessageRole.Agent && !last.isThought && !last.text) {
+        const toolCalls = [...(last.toolCalls || []), tcWithTime]
+        msgs[msgs.length - 1] = { ...last, toolCalls }
+      } else {
+        msgs.push({ id: crypto.randomUUID(), role: MessageRole.Agent, text: '', timestamp: Date.now(), toolCalls: [tcWithTime] })
+      }
+      return { activeMessages: msgs }
+    })
+    schedulePersist()
+  },
+
+  updateToolCall: (toolCallId, updates, sessionId?) => {
+    const state = get()
+    const targetSid = sessionId || state.activeSessionId
+    if (!targetSid || targetSid !== state.activeSessionId) return
+
+    set((s) => {
+      const msgs = s.activeMessages.map((msg) => {
+        if (!msg.toolCalls) return msg
+        const idx = msg.toolCalls.findIndex((tc) => tc.toolCallId === toolCallId)
+        if (idx === -1) return msg
+        const toolCalls = [...msg.toolCalls]
+        const endTime = (updates.status === ToolCallStatus.Completed || updates.status === ToolCallStatus.Failed) ? Date.now() : undefined
+        const truncatedUpdates = {
+          ...updates,
+          ...(updates.rawInput !== undefined ? { rawInput: truncateRaw(updates.rawInput) } : {}),
+          ...(updates.rawOutput !== undefined ? { rawOutput: truncateRaw(updates.rawOutput) } : {}),
+        }
+        toolCalls[idx] = { ...toolCalls[idx], ...truncatedUpdates, ...(endTime ? { endTime } : {}) }
+        return { ...msg, toolCalls }
+      })
+      return { activeMessages: msgs }
+    })
+    schedulePersist()
+  },
+
+  setIsPrompting: (v, sessionId?) => {
+    const targetSid = sessionId || get().activeSessionId
+    if (!targetSid) return
+    set((s) => ({ isPromptingMap: { ...s.isPromptingMap, [targetSid]: v } }))
+  },
+
+  addPermissionRequest: (req) =>
+    set((state) => ({
+      permissionRequests: [...state.permissionRequests, req],
+    })),
+
+  removePermissionRequest: (id) =>
+    set((state) => ({
+      permissionRequests: state.permissionRequests.filter((r) => r.id !== id),
+    })),
+
+  clearSessions: () => {
+    set({ sessionMetas: [], activeSessionId: null, activeMessages: [], sessionCounter: 0, permissionRequests: [], isPromptingMap: {} })
+    localStorage.removeItem('axon-active-session-id')
+  },
+
+  setPendingNewSessionAgentId: (agentId) => set({ pendingNewSessionAgentId: agentId }),
+}))
+
+// Legacy compat: export SessionData type for components that may still reference it
+export interface SessionData {
+  sessionId: string
+  agentId: string
+  messages: ChatMessage[]
+  isPrompting: boolean
+  label: string
+  agentName?: string
+}

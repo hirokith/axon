@@ -9,7 +9,7 @@ import { AcpClient } from './acp/client'
 import { MessageLogger } from './acp/logger'
 import { AgentConfig } from './acp/types'
 import { JsonRpcMessage } from './acp/jsonrpc'
-import { queryLogs, clearLogs, closeDb, insertStructuredLog, queryStructuredLogs, getChatHistory, setChatHistory } from './db'
+import { queryLogs, clearLogs, closeDb, insertStructuredLog, queryStructuredLogs, getChatHistory, setChatHistory, getAllSessionMetas, getSessionMessages, upsertSessionMeta, deleteSessionFromDb, saveSessionMessages, updateSessionLabel, migrateFromBlobIfNeeded } from './db'
 import { getAgents, addAgent, updateAgent, deleteAgent, AgentConfig as StoredAgentConfig, getMcpServers, addMcpServer, updateMcpServer, deleteMcpServer, McpServerConfig as StoredMcpServerConfig } from './store'
 import { IpcChannel, LogDirection } from '../shared/constants'
 
@@ -274,7 +274,10 @@ function setupAcpHandlers(): void {
   })
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  // Migrate old blob format to per-session storage before anything else
+  await migrateFromBlobIfNeeded()
+
   if (process.platform === 'darwin') {
     const icon = nativeImage.createFromPath(join(__dirname, '../../build/icon.png'))
     app.dock.setIcon(icon)
@@ -294,9 +297,17 @@ app.whenReady().then(() => {
   ipcMain.handle(IpcChannel.McpServersUpdate, (_, id: string, updates: Partial<StoredMcpServerConfig>) => { updateMcpServer(id, updates); return getMcpServers() })
   ipcMain.handle(IpcChannel.McpServersDelete, (_, id: string) => { deleteMcpServer(id); return getMcpServers() })
 
-  // Chat history IPC handlers
+  // Chat history IPC handlers (legacy, kept for backwards compat)
   ipcMain.handle(IpcChannel.ChatHistoryGet, () => getChatHistory())
   ipcMain.handle(IpcChannel.ChatHistorySet, (_, data: any) => setChatHistory(data))
+
+  // Per-session storage IPC handlers
+  ipcMain.handle(IpcChannel.SessionMetasGetAll, () => getAllSessionMetas())
+  ipcMain.handle(IpcChannel.SessionMessagesGet, (_, sessionId: string) => getSessionMessages(sessionId))
+  ipcMain.handle(IpcChannel.SessionMetaUpsert, (_, meta: any) => upsertSessionMeta(meta))
+  ipcMain.handle(IpcChannel.SessionDelete, (_, sessionId: string) => deleteSessionFromDb(sessionId))
+  ipcMain.handle(IpcChannel.SessionUpdateLabel, (_, sessionId: string, label: string) => updateSessionLabel(sessionId, label))
+  ipcMain.handle(IpcChannel.MessagesSync, (_, sessionId: string, messages: any[]) => saveSessionMessages(sessionId, messages))
 
   // Log query IPC handlers
   ipcMain.handle(IpcChannel.LogsQuery, (_, options?: any) => queryLogs(options || {}))

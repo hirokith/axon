@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useMemo } from 'react'
-import { useChatStore, SessionData } from '../stores/chatStore'
+import { useChatStore, SessionMeta } from '../stores/chatStore'
 import { useAgentConfigStore } from '../stores/agentConfigStore'
 import { useMcpConfigStore } from '../stores/mcpConfigStore'
 import { McpTransport } from '@shared/constants'
@@ -7,7 +7,7 @@ import { FolderOpen, Plus } from 'lucide-react'
 
 export default function SessionSidebar({ activeAgentId }: { activeAgentId: string | null }) {
   const connectedAgents = useChatStore((s) => s.connectedAgents)
-  const sessions = useChatStore((s) => s.sessions)
+  const sessionMetas = useChatStore((s) => s.sessionMetas)
   const activeSessionId = useChatStore((s) => s.activeSessionId)
   const addSession = useChatStore((s) => s.addSession)
   const switchSession = useChatStore((s) => s.switchSession)
@@ -15,6 +15,7 @@ export default function SessionSidebar({ activeAgentId }: { activeAgentId: strin
   const pendingNewSessionAgentId = useChatStore((s) => s.pendingNewSessionAgentId)
   const setPendingNewSessionAgentId = useChatStore((s) => s.setPendingNewSessionAgentId)
   const updateConnectedAgentModels = useChatStore((s) => s.updateConnectedAgentModels)
+  const activeMessages = useChatStore((s) => s.activeMessages)
   const agents = useAgentConfigStore((s) => s.agents)
 
   // New session dialog state
@@ -70,7 +71,6 @@ export default function SessionSidebar({ activeAgentId }: { activeAgentId: strin
         const modelIds = result.models.availableModels.map((m: any) => m.modelId || m.name)
         updateConnectedAgentModels(dialogAgentId, modelIds)
       } else if (result.configOptions) {
-        // Fallback: stable ACP spec uses configOptions with category "model"
         const modelOption = result.configOptions.find((o: any) => o.category === 'model' || o.id === 'model')
         if (modelOption?.options) {
           const modelIds = modelOption.options.map((o: any) => o.id || o.name)
@@ -82,23 +82,24 @@ export default function SessionSidebar({ activeAgentId }: { activeAgentId: strin
     }
   }, [dialogAgentId, newCwd, selectedMcpIds, mcpServersAll, addSession, connectedAgents, updateConnectedAgentModels])
 
-  const activeAgentSessions = activeAgentId
-    ? sessions.filter((s) => s.agentId === activeAgentId).slice().reverse()
-    : []
+  const activeAgentSessions = useMemo(() => {
+    if (!activeAgentId) return []
+    return sessionMetas.filter((s) => s.agentId === activeAgentId)
+  }, [activeAgentId, sessionMetas])
 
   const groupedSessions = useMemo(() => {
     const now = new Date()
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
     const yesterdayStart = todayStart - 86400000
 
-    const groups: { label: string; sessions: SessionData[] }[] = [
+    const groups: { label: string; sessions: SessionMeta[] }[] = [
       { label: 'Today', sessions: [] },
       { label: 'Yesterday', sessions: [] },
       { label: 'Earlier', sessions: [] },
     ]
 
     for (const s of activeAgentSessions) {
-      const ts = s.messages.length > 0 ? s.messages[0].timestamp : Date.now()
+      const ts = s.createdAt
       if (ts >= todayStart) {
         groups[0].sessions.push(s)
       } else if (ts >= yesterdayStart) {
@@ -111,20 +112,18 @@ export default function SessionSidebar({ activeAgentId }: { activeAgentId: strin
     return groups.filter((g) => g.sessions.length > 0)
   }, [activeAgentSessions])
 
-  if (!activeAgentId && sessions.length === 0 && !showNewDialog) return null
+  if (!activeAgentId && sessionMetas.length === 0 && !showNewDialog) return null
 
   const activeAgent = connectedAgents.find((a) => a.agentId === activeAgentId)
 
   const openNewDialog = () => {
-    const agentSessions = activeAgentId
-      ? sessions.filter((s) => s.agentId === activeAgentId)
-      : []
-    const emptySession = agentSessions.find(
-      (s) => !s.messages.some((m) => m.role === 'user')
-    )
-    if (emptySession) {
-      switchSession(emptySession.sessionId)
-      return
+    // Check if there's an empty session (no user messages) we can reuse
+    if (activeAgentId && activeSessionId) {
+      const isCurrentEmpty = activeMessages.length === 0 || !activeMessages.some((m) => m.role === 'user')
+      const currentMeta = sessionMetas.find((m) => m.sessionId === activeSessionId)
+      if (isCurrentEmpty && currentMeta?.agentId === activeAgentId) {
+        return
+      }
     }
     setDialogAgentId(activeAgentId)
     const agentConfig = agents.find((a) => a.id === activeAgentId)

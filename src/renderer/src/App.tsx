@@ -48,7 +48,8 @@ function App(): JSX.Element {
   const removeConnectedAgent = useChatStore((s) => s.removeConnectedAgent)
   const setPendingNewSessionAgentId = useChatStore((s) => s.setPendingNewSessionAgentId)
   const switchSession = useChatStore((s) => s.switchSession)
-  const sessions = useChatStore((s) => s.sessions)
+  const sessionMetas = useChatStore((s) => s.sessionMetas)
+  const initFromDb = useChatStore((s) => s.initFromDb)
 
   const [activeAgentId, setActiveAgentId] = useState<string | null>(null)
   const [connectingAgents, setConnectingAgents] = useState<Set<string>>(new Set())
@@ -58,6 +59,7 @@ function App(): JSX.Element {
 
   useEffect(() => {
     fetchAgents()
+    initFromDb()
   }, [])
 
   // Auto-connect agents on startup
@@ -98,7 +100,7 @@ function App(): JSX.Element {
       })
       addConnectedAgent(agent.id, agent.name)
       // Only trigger "New Session" dialog if the agent has no existing sessions
-      const existingSessions = useChatStore.getState().sessions.filter((s) => s.agentId === agent.id)
+      const existingSessions = useChatStore.getState().sessionMetas.filter((s) => s.agentId === agent.id)
       if (existingSessions.length === 0) {
         setPendingNewSessionAgentId(agent.id)
       }
@@ -156,9 +158,9 @@ function App(): JSX.Element {
                 key={agent.id}
                 onClick={() => {
                   setActiveAgentId(agent.id); setView('agents')
-                  const agentSessions = sessions.filter((s) => s.agentId === agent.id)
+                  const agentSessions = sessionMetas.filter((s) => s.agentId === agent.id)
                   if (agentSessions.length > 0) {
-                    switchSession(agentSessions[agentSessions.length - 1].sessionId)
+                    switchSession(agentSessions[0].sessionId)
                   } else if (connectedAgents.some((a) => a.agentId === agent.id)) {
                     setPendingNewSessionAgentId(agent.id)
                   }

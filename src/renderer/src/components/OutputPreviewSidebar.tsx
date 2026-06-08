@@ -543,15 +543,13 @@ interface OutputPreviewSidebarProps {
 
 export default function OutputPreviewSidebar({ activeAgentId, onClose, expanded, onToggleExpand }: OutputPreviewSidebarProps) {
   const { agents } = useAgentConfigStore()
-  const sessions = useChatStore((s) => s.sessions)
-  const activeSessionId = useChatStore((s) => s.activeSessionId)
+  const activeMessages = useChatStore((s) => s.activeMessages)
   const [preview, setPreview] = useState<PreviewItem | null>(null)
 
   const agent = agents.find((a) => a.id === activeAgentId)
   const cwd = agent?.cwd || ''
 
-  const activeSession = sessions.find((s) => s.sessionId === activeSessionId)
-  const allDiffs = activeSession ? extractDiffsFromSession(activeSession.messages) : []
+  const allDiffs = extractDiffsFromSession(activeMessages)
 
   // Deduplicate: keep only the last change per file path
   const diffs = useMemo(() => {

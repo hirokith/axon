@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback, useMemo, memo } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
@@ -18,8 +19,6 @@ function useIsDark() {
   }, [])
   return isDark
 }
-
-const EMPTY_MESSAGES: ChatMessage[] = []
 
 function formatTime(ts: number): string {
   const d = new Date(ts)
@@ -56,7 +55,7 @@ function CopyButton({ text }: { text: string }) {
   )
 }
 
-function MessageBubble({ message }: { message: ChatMessage }) {
+const MessageBubble = memo(function MessageBubble({ message }: { message: ChatMessage }) {
   return (
     <div className="group px-4 py-2 hover:bg-surface-hover/50 bg-accent/5 border-l-2 border-l-accent">
       <div className="flex items-center gap-2 mb-1">
@@ -69,7 +68,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
       <div className="text-sm text-text whitespace-pre-wrap">{message.text}</div>
     </div>
   )
-}
+})
 
 function ThoughtBlock({ text }: { text: string }) {
   const [expanded, setExpanded] = useState(false)
@@ -96,12 +95,11 @@ function ThoughtBlock({ text }: { text: string }) {
   )
 }
 
-function AgentGroup({ items }: { items: ChatMessage[] }) {
+const AgentGroup = memo(function AgentGroup({ items }: { items: ChatMessage[] }) {
   const isDark = useIsDark()
   const combinedText = items.filter((m) => !m.isThought && m.text).map((m) => m.text).join('')
   const lastTimestamp = items[items.length - 1]?.timestamp
 
-  // Collect consecutive thoughts into collapsible blocks, render others inline
   const segments: Array<{ type: 'thought'; text: string } | { type: 'msg'; msg: ChatMessage }> = []
   let thoughtBuf = ''
 
@@ -122,7 +120,6 @@ function AgentGroup({ items }: { items: ChatMessage[] }) {
   }
   flushThought()
 
-  // Compute a global tool call offset for each segment so numbering is continuous
   const segmentToolOffsets: number[] = []
   let toolCounter = 0
   for (const seg of segments) {
@@ -166,35 +163,94 @@ function AgentGroup({ items }: { items: ChatMessage[] }) {
       )}
     </div>
   )
+}, (prev, next) => {
+  if (prev.items.length !== next.items.length) return false
+  const prevLast = prev.items[prev.items.length - 1]
+  const nextLast = next.items[next.items.length - 1]
+  if (!prevLast || !nextLast) return false
+  if (prevLast.id !== nextLast.id) return false
+  if (prevLast.text !== nextLast.text) return false
+  if ((prevLast.toolCalls?.length || 0) !== (nextLast.toolCalls?.length || 0)) return false
+  const prevTC = prevLast.toolCalls?.[prevLast.toolCalls.length - 1]
+  const nextTC = nextLast.toolCalls?.[nextLast.toolCalls.length - 1]
+  if (prevTC?.status !== nextTC?.status) return false
+  if (prevTC?.rawOutput !== nextTC?.rawOutput) return false
+  return true
+})
+
+type RenderGroup =
+  | { type: 'user'; msg: ChatMessage; key: string }
+  | { type: 'agent'; items: ChatMessage[]; key: string }
+
+function useRenderGroups(messages: ChatMessage[]): RenderGroup[] {
+  return useMemo(() => {
+    const groups: RenderGroup[] = []
+    let pendingItems: ChatMessage[] = []
+
+    const flushAgent = () => {
+      if (pendingItems.length > 0) {
+        const key = pendingItems[0].id
+        groups.push({ type: 'agent', items: [...pendingItems], key })
+        pendingItems = []
+      }
+    }
+
+    for (const msg of messages) {
+      if (msg.role === MessageRole.User) {
+        flushAgent()
+        groups.push({ type: 'user', msg, key: msg.id })
+      } else {
+        pendingItems.push(msg)
+      }
+    }
+    flushAgent()
+    return groups
+  }, [messages])
 }
 
 export default function MessageList() {
-  const messages = useChatStore((s) =>
-    s.sessions.find((ses) => ses.sessionId === s.activeSessionId)?.messages ?? EMPTY_MESSAGES
-  )
-  const isPrompting = useChatStore((s) =>
-    s.sessions.find((ses) => ses.sessionId === s.activeSessionId)?.isPrompting ?? false
-  )
-  const bottomRef = useRef<HTMLDivElement>(null)
-  const containerRef = useRef<HTMLDivElement>(null)
-  const isUserScrolledUp = useRef(false)
+  const messages = useChatStore((s) => s.activeMessages)
+  const isPrompting = useChatStore((s) => {
+    const sid = s.activeSessionId
+    return sid ? (s.isPromptingMap[sid] ?? false) : false
+  })
+  const isLoadingMessages = useChatStore((s) => s.isLoadingMessages)
 
-  useEffect(() => {
-    const el = containerRef.current
-    if (!el) return
-    const handleScroll = () => {
-      const threshold = 80
-      isUserScrolledUp.current = el.scrollHeight - el.scrollTop - el.clientHeight > threshold
-    }
-    el.addEventListener('scroll', handleScroll)
-    return () => el.removeEventListener('scroll', handleScroll)
+  const parentRef = useRef<HTMLDivElement>(null)
+  const isUserScrolledUp = useRef(false)
+  const renderGroups = useRenderGroups(messages)
+
+  const virtualizer = useVirtualizer({
+    count: renderGroups.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 120,
+    overscan: 5,
+    getItemKey: (index) => renderGroups[index]?.key || index,
   })
 
+  // Auto-scroll to bottom
   useEffect(() => {
-    if (!isUserScrolledUp.current) {
-      bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (!isUserScrolledUp.current && renderGroups.length > 0) {
+      requestAnimationFrame(() => {
+        virtualizer.scrollToIndex(renderGroups.length - 1, { align: 'end' })
+      })
     }
-  }, [messages, isPrompting])
+  }, [renderGroups.length, messages[messages.length - 1]?.text])
+
+  const handleScroll = useCallback(() => {
+    const el = parentRef.current
+    if (!el) return
+    const threshold = 80
+    isUserScrolledUp.current = el.scrollHeight - el.scrollTop - el.clientHeight > threshold
+  }, [])
+
+  if (isLoadingMessages) {
+    return (
+      <div className="flex-1 flex items-center justify-center text-text-subtle">
+        <span className="text-sm">Loading messages...</span>
+      </div>
+    )
+  }
 
   if (messages.length === 0) {
     return (
@@ -207,42 +263,48 @@ export default function MessageList() {
     )
   }
 
-  // Group messages: consecutive non-user messages merge into one agent block, preserving order
-  const renderGroups: Array<{ type: 'user'; msg: ChatMessage } | { type: 'agent'; items: ChatMessage[] }> = []
-  let pendingItems: ChatMessage[] = []
-
-  const flushAgent = () => {
-    if (pendingItems.length > 0) {
-      renderGroups.push({ type: 'agent', items: pendingItems })
-      pendingItems = []
-    }
-  }
-
-  for (const msg of messages) {
-    if (msg.role === MessageRole.User) {
-      flushAgent()
-      renderGroups.push({ type: 'user', msg })
-    } else {
-      pendingItems.push(msg)
-    }
-  }
-  flushAgent()
-
-  // Show loading when prompting and no agent response yet
   const lastMsg = messages[messages.length - 1]
   const showLoading = isPrompting && (!lastMsg || lastMsg.role === MessageRole.User)
 
   return (
-    <div ref={containerRef} className="flex-1 overflow-y-auto select-text">
-      {renderGroups.map((group, gi) => (
-        <div key={gi} className="border-b border-border">
-          {group.type === 'user' ? (
-            <MessageBubble message={group.msg} />
-          ) : (
-            <AgentGroup items={group.items} />
-          )}
-        </div>
-      ))}
+    <div
+      ref={parentRef}
+      onScroll={handleScroll}
+      className="flex-1 overflow-y-auto select-text"
+    >
+      <div
+        style={{
+          height: `${virtualizer.getTotalSize()}px`,
+          width: '100%',
+          position: 'relative',
+        }}
+      >
+        {virtualizer.getVirtualItems().map((virtualItem) => {
+          const group = renderGroups[virtualItem.index]
+          return (
+            <div
+              key={virtualItem.key}
+              data-index={virtualItem.index}
+              ref={virtualizer.measureElement}
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                transform: `translateY(${virtualItem.start}px)`,
+              }}
+            >
+              <div className="border-b border-border">
+                {group.type === 'user' ? (
+                  <MessageBubble message={group.msg} />
+                ) : (
+                  <AgentGroup items={group.items} />
+                )}
+              </div>
+            </div>
+          )
+        })}
+      </div>
       {showLoading && (
         <div className="px-4 py-3 border-b border-border">
           <div className="flex items-center gap-2">
@@ -251,7 +313,6 @@ export default function MessageList() {
           </div>
         </div>
       )}
-      <div ref={bottomRef} />
     </div>
   )
 }

@@ -27,6 +27,12 @@ export const IpcChannel = {
   AcpTestConnection: 'acp:test-connection',
   ChatHistoryGet: 'chat-history:get',
   ChatHistorySet: 'chat-history:set',
+  SessionMetasGetAll: 'sessions:get-all-metas',
+  SessionMessagesGet: 'sessions:get-messages',
+  SessionMetaUpsert: 'sessions:meta-upsert',
+  SessionDelete: 'sessions:delete',
+  SessionUpdateLabel: 'sessions:update-label',
+  MessagesSync: 'messages:sync',
 } as const
 
 export enum ToolCallStatus {
