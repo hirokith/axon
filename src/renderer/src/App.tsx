@@ -45,30 +45,35 @@ function App(): JSX.Element {
   const { agents, fetchAgents } = useAgentConfigStore()
   const connectedAgents = useChatStore((s) => s.connectedAgents)
   const addConnectedAgent = useChatStore((s) => s.addConnectedAgent)
+  const removeConnectedAgent = useChatStore((s) => s.removeConnectedAgent)
   const setPendingNewSessionAgentId = useChatStore((s) => s.setPendingNewSessionAgentId)
   const switchSession = useChatStore((s) => s.switchSession)
-  const sessions = useChatStore((s) => s.sessions)
+  const sessionMetas = useChatStore((s) => s.sessionMetas)
+  const initFromDb = useChatStore((s) => s.initFromDb)
 
   const [activeAgentId, setActiveAgentId] = useState<string | null>(null)
   const [connectingAgents, setConnectingAgents] = useState<Set<string>>(new Set())
   const [failedAgents, setFailedAgents] = useState<Set<string>>(new Set())
+  const [dbReady, setDbReady] = useState(false)
 
   useAcpEvents()
 
   useEffect(() => {
     fetchAgents()
+    initFromDb().then(() => setDbReady(true))
   }, [])
 
   // Auto-connect agents on startup
   useEffect(() => {
-    if (agents.length === 0) return
+    if (!dbReady || agents.length === 0) return
     agents.forEach((agent) => {
+      if (agent.enabled === false) return
       const alreadyConnected = connectedAgents.some((c) => c.agentId === agent.id)
       if (!alreadyConnected && !connectingAgents.has(agent.id) && !failedAgents.has(agent.id)) {
         connectAgent(agent.id)
       }
     })
-  }, [agents])
+  }, [agents, dbReady])
 
   // Set active agent tab to first available
   useEffect(() => {
@@ -96,7 +101,7 @@ function App(): JSX.Element {
       })
       addConnectedAgent(agent.id, agent.name)
       // Only trigger "New Session" dialog if the agent has no existing sessions
-      const existingSessions = useChatStore.getState().sessions.filter((s) => s.agentId === agent.id)
+      const existingSessions = useChatStore.getState().sessionMetas.filter((s) => s.agentId === agent.id)
       if (existingSessions.length === 0) {
         setPendingNewSessionAgentId(agent.id)
       }
@@ -106,6 +111,12 @@ function App(): JSX.Element {
     } finally {
       setConnectingAgents((s) => { const n = new Set(s); n.delete(agentId); return n })
     }
+  }
+
+  const reconnectAgent = async (agentId: string) => {
+    await (window as any).acpApi.disconnect(agentId)
+    removeConnectedAgent(agentId)
+    connectAgent(agentId)
   }
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -142,14 +153,15 @@ function App(): JSX.Element {
             const isConnected = connectedAgents.some((c) => c.agentId === agent.id)
             const isConnecting = connectingAgents.has(agent.id)
             const isFailed = failedAgents.has(agent.id)
+            const isDisabled = agent.enabled === false
             return (
               <button
                 key={agent.id}
                 onClick={() => {
                   setActiveAgentId(agent.id); setView('agents')
-                  const agentSessions = sessions.filter((s) => s.agentId === agent.id)
+                  const agentSessions = sessionMetas.filter((s) => s.agentId === agent.id)
                   if (agentSessions.length > 0) {
-                    switchSession(agentSessions[agentSessions.length - 1].sessionId)
+                    switchSession(agentSessions[0].sessionId)
                   } else if (connectedAgents.some((a) => a.agentId === agent.id)) {
                     setPendingNewSessionAgentId(agent.id)
                   }
@@ -157,7 +169,7 @@ function App(): JSX.Element {
                 className={`flex items-center gap-1.5 px-3 h-full text-xs font-medium border-r border-border transition-colors ${
                   view === 'agents' && activeAgentId === agent.id
                     ? 'bg-editor-bg text-text border-t-2 border-t-accent'
-                    : 'text-text-muted hover:text-text'
+                    : isDisabled ? 'text-text-subtle hover:text-text-muted' : 'text-text-muted hover:text-text'
                 }`}
               >
                 <span
@@ -165,7 +177,25 @@ function App(): JSX.Element {
                     isConnected ? 'bg-success ring-success/30' : isConnecting ? 'bg-warning ring-warning/30 animate-pulse' : isFailed ? 'bg-error ring-error/30' : 'bg-text-subtle ring-text-subtle/20'
                   }`}
                 />
-                {agent.name}
+                <span className={isDisabled && !isConnected ? 'opacity-50' : ''}>{agent.name}</span>
+                {isConnected && !isConnecting && !isDisabled && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); reconnectAgent(agent.id) }}
+                    className="text-[10px] text-text-muted hover:text-accent ml-1"
+                    title="Reconnect"
+                  >
+                    ↻
+                  </button>
+                )}
+                {!isConnected && !isConnecting && !isFailed && !isDisabled && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); connectAgent(agent.id) }}
+                    className="text-[10px] text-text-muted hover:text-accent ml-1"
+                    title="Connect"
+                  >
+                    ▶
+                  </button>
+                )}
                 {isFailed && (
                   <button
                     onClick={(e) => { e.stopPropagation(); connectAgent(agent.id) }}

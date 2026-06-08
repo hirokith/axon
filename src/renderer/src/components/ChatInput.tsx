@@ -10,11 +10,14 @@ export default function ChatInput() {
   const dropdownRef = useRef<HTMLDivElement>(null)
   const connectedAgents = useChatStore((s) => s.connectedAgents)
   const activeSessionId = useChatStore((s) => s.activeSessionId)
-  const activeSession = useChatStore((s) =>
-    s.sessions.find((ses) => ses.sessionId === s.activeSessionId)
-  )
-  const isPrompting = activeSession?.isPrompting ?? false
-  const activeAgentId = activeSession?.agentId
+  const sessionMetas = useChatStore((s) => s.sessionMetas)
+  const isPrompting = useChatStore((s) => {
+    const sid = s.activeSessionId
+    return sid ? (s.isPromptingMap[sid] ?? false) : false
+  })
+
+  const activeMeta = sessionMetas.find((m) => m.sessionId === activeSessionId)
+  const activeAgentId = activeMeta?.agentId
   const addUserMessage = useChatStore((s) => s.addUserMessage)
   const setIsPrompting = useChatStore((s) => s.setIsPrompting)
   const updateSessionId = useChatStore((s) => s.updateSessionId)
@@ -64,7 +67,6 @@ export default function ChatInput() {
       await (window as any).acpApi.sendPrompt(activeAgentId, activeSessionId, prompt, model)
     } catch (e: any) {
       const errMsg = e?.message || String(e)
-      // If session not found on agent side, recreate and retry
       if (errMsg.toLowerCase().includes('not found')) {
         console.log('[ChatInput] Session not found, recreating...')
         try {
@@ -116,7 +118,7 @@ export default function ChatInput() {
           placeholder={isAgentConnected ? 'Message... (Enter to send)' : 'Connect to an agent first'}
           disabled={!isAgentConnected || !activeSessionId}
           rows={3}
-          className="flex-1 min-w-0 resize-none bg-panel-bg border border-border text-text text-xs px-2 py-1.5 rounded-sm placeholder:text-text-subtle focus:outline-none focus:border-accent disabled:opacity-40 font-[inherit] leading-[1.4]"
+          className="flex-1 min-w-0 resize-none bg-surface border border-border text-text text-xs px-2 py-1.5 rounded-sm placeholder:text-text-subtle focus:outline-none focus:border-accent disabled:opacity-40 font-[inherit] leading-[1.4]"
         />
         <div className="flex items-center justify-end gap-1.5">
           {availableModels.length > 0 && (

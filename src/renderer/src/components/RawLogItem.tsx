@@ -42,7 +42,7 @@ export default function RawLogItem({ entry }: { entry: RawLogEntry }) {
 
       {expanded && (
         <pre
-          className="text-xs bg-panel-bg border border-border rounded p-2 mt-2 ml-20 overflow-x-auto max-h-96 overflow-y-auto"
+          className="text-xs bg-panel-bg border border-border rounded p-2 mt-2 ml-20 overflow-x-auto whitespace-pre-wrap break-words max-h-96 overflow-y-auto"
           onClick={(e) => e.stopPropagation()}
           dangerouslySetInnerHTML={{ __html: highlightJson(msg) }}
         />

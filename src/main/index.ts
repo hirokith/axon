@@ -9,9 +9,13 @@ import { AcpClient } from './acp/client'
 import { MessageLogger } from './acp/logger'
 import { AgentConfig } from './acp/types'
 import { JsonRpcMessage } from './acp/jsonrpc'
-import { queryLogs, clearLogs, closeDb, insertStructuredLog, queryStructuredLogs, getChatHistory, setChatHistory } from './db'
+import { queryLogs, clearLogs, closeDb, insertStructuredLog, queryStructuredLogs, getChatHistory, setChatHistory, getAllSessionMetas, getSessionMessages, upsertSessionMeta, deleteSessionFromDb, saveSessionMessages, updateSessionLabel, migrateFromBlobIfNeeded } from './db'
 import { getAgents, addAgent, updateAgent, deleteAgent, AgentConfig as StoredAgentConfig, getMcpServers, addMcpServer, updateMcpServer, deleteMcpServer, McpServerConfig as StoredMcpServerConfig } from './store'
 import { IpcChannel, LogDirection } from '../shared/constants'
+
+function ts(): string {
+  return new Date().toISOString()
+}
 
 // Fix PATH for packaged app (macOS/Linux GUI launches don't inherit shell PATH)
 function fixPath(): void {
@@ -114,17 +118,17 @@ function setupAcpHandlers(): void {
     const originalSend = transport.send.bind(transport)
     transport.send = (msg: JsonRpcMessage) => {
       logger.log(LogDirection.Outgoing, msg, agentId)
-      console.log('[ACP outgoing]', JSON.stringify(msg))
+      console.log(`[${ts()}] [ACP outgoing]`, JSON.stringify(msg))
       originalSend(msg)
     }
 
     transport.on('message', (msg: JsonRpcMessage) => {
       logger.log(LogDirection.Incoming, msg, agentId)
-      console.log('[ACP incoming]', JSON.stringify(msg))
+      console.log(`[${ts()}] [ACP incoming]`, JSON.stringify(msg))
     })
 
     transport.on('stderr', (text: string) => {
-      console.log('[ACP stderr]', text)
+      console.log(`[${ts()}] [ACP stderr]`, text)
       sendToRenderer('acp:stderr', { agentId, text })
     })
 
@@ -140,7 +144,7 @@ function setupAcpHandlers(): void {
     transport.on('error', (err: Error) => {
       // Log errors but don't treat them as disconnections.
       // Only the 'close' event means the connection is truly gone.
-      console.error('[ACP transport error]', agentId, err.message)
+      console.error(`[${ts()}] [ACP transport error]`, agentId, err.message)
     })
 
     transport.start()
@@ -151,13 +155,13 @@ function setupAcpHandlers(): void {
     })
 
     client.on('incoming-request', (msg: any) => {
-      console.log('[ACP incoming-request]', msg.method)
+      console.log(`[${ts()}] [ACP incoming-request]`, msg.method)
       const conn = connections.get(agentId)
       if (conn) {
         try {
           conn.transport.send({ jsonrpc: '2.0', id: msg.id, result: {} })
         } catch (err) {
-          console.error('[ACP] Failed to send response:', err)
+          console.error(`[${ts()}] [ACP] Failed to send response:`, err)
         }
       }
       sendToRenderer('acp:turn-complete', {
@@ -177,7 +181,7 @@ function setupAcpHandlers(): void {
     })
 
     client.on('error', (err: Error) => {
-      console.error('[ACP client error]', agentId, err.message)
+      console.error(`[${ts()}] [ACP client error]`, agentId, err.message)
     })
 
     connections.set(agentId, { transport, client, cwd })
@@ -270,7 +274,14 @@ function setupAcpHandlers(): void {
   })
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  // Migrate old blob format to per-session storage before anything else
+  try {
+    await migrateFromBlobIfNeeded()
+  } catch (err) {
+    console.error('[DB migration] failed:', err)
+  }
+
   if (process.platform === 'darwin') {
     const icon = nativeImage.createFromPath(join(__dirname, '../../build/icon.png'))
     app.dock.setIcon(icon)
@@ -290,9 +301,17 @@ app.whenReady().then(() => {
   ipcMain.handle(IpcChannel.McpServersUpdate, (_, id: string, updates: Partial<StoredMcpServerConfig>) => { updateMcpServer(id, updates); return getMcpServers() })
   ipcMain.handle(IpcChannel.McpServersDelete, (_, id: string) => { deleteMcpServer(id); return getMcpServers() })
 
-  // Chat history IPC handlers
+  // Chat history IPC handlers (legacy, kept for backwards compat)
   ipcMain.handle(IpcChannel.ChatHistoryGet, () => getChatHistory())
   ipcMain.handle(IpcChannel.ChatHistorySet, (_, data: any) => setChatHistory(data))
+
+  // Per-session storage IPC handlers
+  ipcMain.handle(IpcChannel.SessionMetasGetAll, () => getAllSessionMetas())
+  ipcMain.handle(IpcChannel.SessionMessagesGet, (_, sessionId: string) => getSessionMessages(sessionId))
+  ipcMain.handle(IpcChannel.SessionMetaUpsert, (_, meta: any) => upsertSessionMeta(meta))
+  ipcMain.handle(IpcChannel.SessionDelete, (_, sessionId: string) => deleteSessionFromDb(sessionId))
+  ipcMain.handle(IpcChannel.SessionUpdateLabel, (_, sessionId: string, label: string) => updateSessionLabel(sessionId, label))
+  ipcMain.handle(IpcChannel.MessagesSync, (_, sessionId: string, messages: any[]) => saveSessionMessages(sessionId, messages))
 
   // Log query IPC handlers
   ipcMain.handle(IpcChannel.LogsQuery, (_, options?: any) => queryLogs(options || {}))
@@ -324,7 +343,6 @@ app.whenReady().then(() => {
     try {
       const entries = fs.readdirSync(dirPath, { withFileTypes: true })
       return entries
-        .filter((e) => !e.name.startsWith('.'))
         .map((e) => ({ name: e.name, isDirectory: e.isDirectory() }))
         .sort((a, b) => {
           if (a.isDirectory && !b.isDirectory) return -1

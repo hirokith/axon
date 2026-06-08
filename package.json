@@ -115,6 +115,7 @@
   "dependencies": {
     "@pierre/diffs": "^1.1.21",
     "@tailwindcss/typography": "^0.5.19",
+    "@tanstack/react-virtual": "^3.14.2",
     "@types/uuid": "^10.0.0",
     "electron-store": "^8.2.0",
     "katex": "^0.16.45",
@@ -133,6 +134,10 @@
   },
   "packageManager": "pnpm@11.1.2",
   "pnpm": {
-    "onlyBuiltDependencies": ["electron", "esbuild", "electron-winstaller"]
+    "onlyBuiltDependencies": [
+      "electron",
+      "esbuild",
+      "electron-winstaller"
+    ]
   }
 }

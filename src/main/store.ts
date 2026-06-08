@@ -8,6 +8,7 @@ export interface AgentConfig {
   args: string[]
   cwd?: string
   env?: Record<string, string>
+  enabled?: boolean
 }
 
 interface StoredAgentConfig {
@@ -17,6 +18,7 @@ interface StoredAgentConfig {
   args: string[]
   cwd?: string
   encryptedEnv?: Record<string, string>
+  enabled?: boolean
 }
 
 export interface McpServerConfig {
@@ -80,7 +82,7 @@ function toStored(agent: AgentConfig): StoredAgentConfig {
 
 function fromStored(stored: StoredAgentConfig): AgentConfig {
   const { encryptedEnv, ...rest } = stored
-  const agent: AgentConfig = { ...rest }
+  const agent: AgentConfig = { ...rest, enabled: stored.enabled !== false }
   if (encryptedEnv && Object.keys(encryptedEnv).length > 0) {
     agent.env = decryptEnv(encryptedEnv)
   }
