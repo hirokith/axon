@@ -549,16 +549,14 @@ export default function OutputPreviewSidebar({ activeAgentId, onClose, expanded,
   const agent = agents.find((a) => a.id === activeAgentId)
   const cwd = agent?.cwd || ''
 
-  const allDiffs = extractDiffsFromSession(activeMessages)
-
-  // Deduplicate: keep only the last change per file path
   const diffs = useMemo(() => {
+    const allDiffs = extractDiffsFromSession(activeMessages)
     const seen = new Map<string, FileDiff>()
     for (const diff of allDiffs) {
       seen.set(diff.filePath, diff)
     }
     return Array.from(seen.values())
-  }, [allDiffs])
+  }, [activeMessages])
 
   const handleFileClick = useCallback(async (filePath: string) => {
     setPreview({ type: 'file', path: filePath, content: null, loading: true })

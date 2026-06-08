@@ -138,6 +138,12 @@ function flushActiveMessages() {
 // Buffer for messages targeting non-active sessions during streaming
 const inactiveBuffers = new Map<string, ChatMessage[]>()
 
+// Microtask batching for streaming text appends
+let pendingAgentText = ''
+let pendingAgentTextScheduled = false
+let pendingThoughtText = ''
+let pendingThoughtTextScheduled = false
+
 function flushInactiveBuffer(sessionId: string) {
   const buffer = inactiveBuffers.get(sessionId)
   if (!buffer || buffer.length === 0) return
@@ -427,17 +433,27 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       return
     }
 
-    set((s) => {
-      const msgs = [...s.activeMessages]
-      const last = msgs[msgs.length - 1]
-      if (last && last.role === MessageRole.Agent && !last.isThought && !(last.toolCalls && last.toolCalls.length > 0)) {
-        msgs[msgs.length - 1] = { ...last, text: last.text + text }
-      } else {
-        msgs.push({ id: crypto.randomUUID(), role: MessageRole.Agent, text, timestamp: Date.now() })
-      }
-      return { activeMessages: msgs }
-    })
-    schedulePersist()
+    pendingAgentText += text
+    if (!pendingAgentTextScheduled) {
+      pendingAgentTextScheduled = true
+      queueMicrotask(() => {
+        const buffered = pendingAgentText
+        pendingAgentText = ''
+        pendingAgentTextScheduled = false
+        set((s) => {
+          const msgs = s.activeMessages
+          const last = msgs[msgs.length - 1]
+          if (last && last.role === MessageRole.Agent && !last.isThought && !(last.toolCalls && last.toolCalls.length > 0)) {
+            const newMsgs = msgs.slice()
+            newMsgs[newMsgs.length - 1] = { ...last, text: last.text + buffered }
+            return { activeMessages: newMsgs }
+          } else {
+            return { activeMessages: [...msgs, { id: crypto.randomUUID(), role: MessageRole.Agent, text: buffered, timestamp: Date.now() }] }
+          }
+        })
+        schedulePersist()
+      })
+    }
   },
 
   appendThoughtText: (text, sessionId?) => {
@@ -450,17 +466,27 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       return
     }
 
-    set((s) => {
-      const msgs = [...s.activeMessages]
-      const last = msgs[msgs.length - 1]
-      if (last && last.role === MessageRole.Agent && last.isThought) {
-        msgs[msgs.length - 1] = { ...last, text: last.text + text }
-      } else {
-        msgs.push({ id: crypto.randomUUID(), role: MessageRole.Agent, text, timestamp: Date.now(), isThought: true })
-      }
-      return { activeMessages: msgs }
-    })
-    schedulePersist()
+    pendingThoughtText += text
+    if (!pendingThoughtTextScheduled) {
+      pendingThoughtTextScheduled = true
+      queueMicrotask(() => {
+        const buffered = pendingThoughtText
+        pendingThoughtText = ''
+        pendingThoughtTextScheduled = false
+        set((s) => {
+          const msgs = s.activeMessages
+          const last = msgs[msgs.length - 1]
+          if (last && last.role === MessageRole.Agent && last.isThought) {
+            const newMsgs = msgs.slice()
+            newMsgs[newMsgs.length - 1] = { ...last, text: last.text + buffered }
+            return { activeMessages: newMsgs }
+          } else {
+            return { activeMessages: [...msgs, { id: crypto.randomUUID(), role: MessageRole.Agent, text: buffered, timestamp: Date.now(), isThought: true }] }
+          }
+        })
+        schedulePersist()
+      })
+    }
   },
 
   addToolCall: (tc, sessionId?) => {
@@ -469,16 +495,17 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     if (!targetSid || targetSid !== state.activeSessionId) return
 
     set((s) => {
-      const msgs = [...s.activeMessages]
+      const msgs = s.activeMessages
       const last = msgs[msgs.length - 1]
       const tcWithTime = { ...tc, rawInput: truncateRaw(tc.rawInput), rawOutput: truncateRaw(tc.rawOutput), startTime: Date.now() }
       if (last && last.role === MessageRole.Agent && !last.isThought && !last.text) {
         const toolCalls = [...(last.toolCalls || []), tcWithTime]
-        msgs[msgs.length - 1] = { ...last, toolCalls }
+        const newMsgs = msgs.slice()
+        newMsgs[newMsgs.length - 1] = { ...last, toolCalls }
+        return { activeMessages: newMsgs }
       } else {
-        msgs.push({ id: crypto.randomUUID(), role: MessageRole.Agent, text: '', timestamp: Date.now(), toolCalls: [tcWithTime] })
+        return { activeMessages: [...msgs, { id: crypto.randomUUID(), role: MessageRole.Agent, text: '', timestamp: Date.now(), toolCalls: [tcWithTime] }] }
       }
-      return { activeMessages: msgs }
     })
     schedulePersist()
   },

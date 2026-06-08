@@ -70,6 +70,17 @@ const MessageBubble = memo(function MessageBubble({ message }: { message: ChatMe
   )
 })
 
+const remarkPlugins = [remarkGfm, remarkMath]
+const rehypePlugins = [rehypeKatex]
+
+const MemoMarkdown = memo(function MemoMarkdown({ text, isDark }: { text: string; isDark: boolean }) {
+  return (
+    <div className={`text-sm text-text prose prose-sm max-w-none ${isDark ? 'prose-invert' : ''} [&_pre]:bg-panel-bg [&_pre]:border [&_pre]:border-border [&_code]:text-warning [&_a]:text-accent`}>
+      <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins}>{text}</ReactMarkdown>
+    </div>
+  )
+})
+
 function ThoughtBlock({ text }: { text: string }) {
   const [expanded, setExpanded] = useState(false)
   return (
@@ -147,9 +158,7 @@ const AgentGroup = memo(function AgentGroup({ items }: { items: ChatMessage[] })
         ) : (
           <div key={si}>
             {seg.msg.text && (
-              <div className={`text-sm text-text prose prose-sm max-w-none ${isDark ? 'prose-invert' : ''} [&_pre]:bg-panel-bg [&_pre]:border [&_pre]:border-border [&_code]:text-warning [&_a]:text-accent`}>
-                <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{seg.msg.text}</ReactMarkdown>
-              </div>
+              <MemoMarkdown text={seg.msg.text} isDark={isDark} />
             )}
             {seg.msg.toolCalls && seg.msg.toolCalls.length > 0 && (
               <div className="mt-2 mb-2 space-y-1">

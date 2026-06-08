@@ -15,7 +15,6 @@ export default function SessionSidebar({ activeAgentId }: { activeAgentId: strin
   const pendingNewSessionAgentId = useChatStore((s) => s.pendingNewSessionAgentId)
   const setPendingNewSessionAgentId = useChatStore((s) => s.setPendingNewSessionAgentId)
   const updateConnectedAgentModels = useChatStore((s) => s.updateConnectedAgentModels)
-  const activeMessages = useChatStore((s) => s.activeMessages)
   const agents = useAgentConfigStore((s) => s.agents)
 
   // New session dialog state
@@ -117,9 +116,9 @@ export default function SessionSidebar({ activeAgentId }: { activeAgentId: strin
   const activeAgent = connectedAgents.find((a) => a.agentId === activeAgentId)
 
   const openNewDialog = () => {
-    // Check if there's an empty session (no user messages) we can reuse
     if (activeAgentId && activeSessionId) {
-      const isCurrentEmpty = activeMessages.length === 0 || !activeMessages.some((m) => m.role === 'user')
+      const msgs = useChatStore.getState().activeMessages
+      const isCurrentEmpty = msgs.length === 0 || !msgs.some((m) => m.role === 'user')
       const currentMeta = sessionMetas.find((m) => m.sessionId === activeSessionId)
       if (isCurrentEmpty && currentMeta?.agentId === activeAgentId) {
         return

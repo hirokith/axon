@@ -11,10 +11,12 @@ export default function ChatInput() {
   const connectedAgents = useChatStore((s) => s.connectedAgents)
   const activeSessionId = useChatStore((s) => s.activeSessionId)
   const sessionMetas = useChatStore((s) => s.sessionMetas)
-  const isPromptingMap = useChatStore((s) => s.isPromptingMap)
+  const isPrompting = useChatStore((s) => {
+    const sid = s.activeSessionId
+    return sid ? (s.isPromptingMap[sid] ?? false) : false
+  })
 
   const activeMeta = sessionMetas.find((m) => m.sessionId === activeSessionId)
-  const isPrompting = (activeSessionId && isPromptingMap[activeSessionId]) ?? false
   const activeAgentId = activeMeta?.agentId
   const addUserMessage = useChatStore((s) => s.addUserMessage)
   const setIsPrompting = useChatStore((s) => s.setIsPrompting)
