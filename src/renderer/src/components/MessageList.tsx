@@ -5,7 +5,7 @@ import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
-import { useChatStore, ChatMessage, MessageRole } from '../stores/chatStore'
+import { useChatStore, ChatMessage, MessageRole, ToolCallInfo } from '../stores/chatStore'
 import ToolCallCard from './ToolCallCard'
 
 function useIsDark() {
@@ -133,11 +133,18 @@ const AgentGroup = memo(function AgentGroup({ items }: { items: ChatMessage[] })
 
   const segmentToolOffsets: number[] = []
   let toolCounter = 0
+  // Collect all tool calls in order to compute prevEndTime for each
+  const allToolCalls: ToolCallInfo[] = []
   for (const seg of segments) {
     segmentToolOffsets.push(toolCounter)
     if (seg.type === 'msg' && seg.msg.toolCalls) {
       toolCounter += seg.msg.toolCalls.length
+      allToolCalls.push(...seg.msg.toolCalls)
     }
+  }
+  const prevEndTimeMap = new Map<string, number | undefined>()
+  for (let ti = 0; ti < allToolCalls.length; ti++) {
+    prevEndTimeMap.set(allToolCalls[ti].toolCallId, ti > 0 ? allToolCalls[ti - 1].endTime : undefined)
   }
 
   return (
@@ -163,7 +170,7 @@ const AgentGroup = memo(function AgentGroup({ items }: { items: ChatMessage[] })
             {seg.msg.toolCalls && seg.msg.toolCalls.length > 0 && (
               <div className="mt-2 mb-2 space-y-1">
                 {seg.msg.toolCalls.map((tc, i) => (
-                  <ToolCallCard key={tc.toolCallId} toolCall={tc} index={segmentToolOffsets[si] + i + 1} />
+                  <ToolCallCard key={tc.toolCallId} toolCall={tc} index={segmentToolOffsets[si] + i + 1} prevEndTime={prevEndTimeMap.get(tc.toolCallId)} />
                 ))}
               </div>
             )}

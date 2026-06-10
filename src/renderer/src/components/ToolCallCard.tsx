@@ -93,13 +93,17 @@ function formatEndTime(ts: number): string {
   return `${hh}:${mm}:${ss}`
 }
 
-export default function ToolCallCard({ toolCall, index }: { toolCall: ToolCallInfo; index?: number }) {
+export default function ToolCallCard({ toolCall, index, prevEndTime }: { toolCall: ToolCallInfo; index?: number; prevEndTime?: number }) {
   const [expanded, setExpanded] = useState(false)
   const statusClass = statusColors[toolCall.status] || 'text-text-muted'
   const isRunning = toolCall.status === 'pending' || toolCall.status === 'in_progress'
   const duration = toolCall.startTime && toolCall.endTime
     ? toolCall.endTime - toolCall.startTime
     : undefined
+  const waitTime = prevEndTime && toolCall.startTime
+    ? toolCall.startTime - prevEndTime
+    : undefined
+  const showWaitTime = waitTime != null && waitTime > 10000
 
   const inputText = formatInput(toolCall.rawInput)
   const outputText = formatOutput(toolCall.rawOutput)
@@ -125,13 +129,16 @@ export default function ToolCallCard({ toolCall, index }: { toolCall: ToolCallIn
         </span>
         {isRunning && toolCall.startTime && <ElapsedTimer startTime={toolCall.startTime} />}
         {isRunning && <LoadingDots />}
+        {!isRunning && showWaitTime && (
+          <span className="text-[10px] text-text-subtle font-mono" title="等待耗时">⏳{formatDuration(waitTime)}</span>
+        )}
         {!isRunning && duration != null && (
-          <span className="text-[10px] text-text-subtle font-mono">{formatDuration(duration)}</span>
+          <span className="text-[10px] text-text-subtle font-mono" title="执行耗时">⚡️{formatDuration(duration)}</span>
         )}
         {!isRunning && toolCall.endTime && (
           <span className="text-[10px] text-text-subtle font-mono">{formatEndTime(toolCall.endTime)}</span>
         )}
-        {!isRunning && <span className={`text-xs ${statusClass}`}>{toolCall.status === ToolCallStatus.Completed ? '✓' : '✗'}</span>}
+        {!isRunning && toolCall.status === ToolCallStatus.Failed && <span className={`text-xs ${statusClass}`}>✗</span>}
         <span className="text-text-subtle">{expanded ? '▴' : '▾'}</span>
       </button>
       {expanded && (
