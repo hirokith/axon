@@ -13,6 +13,7 @@ export interface StructuredLogEntry {
   rawOutput?: any
   content?: string
   kind?: string
+  sessionId?: string | null
 }
 
 export interface RawLogEntry {
@@ -20,6 +21,7 @@ export interface RawLogEntry {
   timestamp: number
   direction: LogDirection
   message: any
+  sessionId?: string | null
 }
 
 interface LogState {

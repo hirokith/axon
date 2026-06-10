@@ -1,5 +1,6 @@
 import { useEffect, useRef, useMemo } from 'react'
 import { useLogStore, LogEntryType } from '../stores/logStore'
+import { useChatStore } from '../stores/chatStore'
 import StructuredLogItem from './StructuredLogItem'
 import RawLogItem from './RawLogItem'
 
@@ -16,34 +17,32 @@ export default function LogPanel() {
     loadStructuredLogs
   } = useLogStore()
 
+  const activeSessionId = useChatStore((s) => s.activeSessionId)
+
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  // Load persisted structured logs on mount
+  // Load persisted structured logs when session changes
   useEffect(() => {
     const acpApi = (window as any).acpApi
     if (acpApi?.structuredLogs?.query) {
-      acpApi.structuredLogs.query().then((entries: any[]) => {
-        if (entries && entries.length > 0) {
-          loadStructuredLogs(entries)
-        }
+      acpApi.structuredLogs.query({ sessionId: activeSessionId || undefined }).then((entries: any[]) => {
+        loadStructuredLogs(entries || [])
       }).catch(() => {})
     }
-  }, [loadStructuredLogs])
+  }, [activeSessionId, loadStructuredLogs])
 
   useEffect(() => {
     if (debugMode) {
       const acpApi = (window as any).acpApi
-      if (acpApi?.getLogEntries) {
-        acpApi.getLogEntries().then((entries: any[]) => {
-          if (entries && entries.length > 0) {
-            loadRawLogs(entries)
-          }
+      if (acpApi?.logs?.query) {
+        acpApi.logs.query({ sessionId: activeSessionId || undefined }).then((entries: any[]) => {
+          loadRawLogs(entries || [])
         }).catch((err: any) => {
           console.error('[LogPanel] Failed to load log entries:', err)
         })
       }
     }
-  }, [debugMode, loadRawLogs])
+  }, [debugMode, activeSessionId, loadRawLogs])
 
   useEffect(() => {
     const el = scrollRef.current
@@ -54,6 +53,9 @@ export default function LogPanel() {
 
   const filteredStructured = useMemo(() => {
     let logs = structuredLogs
+    if (activeSessionId) {
+      logs = logs.filter((l) => !l.sessionId || l.sessionId === activeSessionId)
+    }
     if (filter.type) {
       logs = logs.filter((l) => l.type === filter.type)
     }
@@ -66,15 +68,21 @@ export default function LogPanel() {
       )
     }
     return logs
-  }, [structuredLogs, filter])
+  }, [structuredLogs, filter, activeSessionId])
 
   const filteredRaw = useMemo(() => {
-    if (!filter.keyword) return rawLogs
-    const kw = filter.keyword.toLowerCase()
-    return rawLogs.filter(
-      (l) => JSON.stringify(l.message).toLowerCase().includes(kw)
-    )
-  }, [rawLogs, filter.keyword])
+    let logs = rawLogs
+    if (activeSessionId) {
+      logs = logs.filter((l) => !l.sessionId || l.sessionId === activeSessionId)
+    }
+    if (filter.keyword) {
+      const kw = filter.keyword.toLowerCase()
+      logs = logs.filter(
+        (l) => JSON.stringify(l.message).toLowerCase().includes(kw)
+      )
+    }
+    return logs
+  }, [rawLogs, filter.keyword, activeSessionId])
 
   return (
     <div className="flex flex-col h-full bg-panel-bg text-text">
