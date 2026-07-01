@@ -117,13 +117,15 @@ function setupAcpHandlers(): void {
     // Wrap transport send to log outgoing messages
     const originalSend = transport.send.bind(transport)
     transport.send = (msg: JsonRpcMessage) => {
-      logger.log(LogDirection.Outgoing, msg, agentId)
+      const sid = (msg as any).params?.sessionId || null
+      logger.log(LogDirection.Outgoing, msg, agentId, sid)
       console.log(`[${ts()}] [ACP outgoing]`, JSON.stringify(msg))
       originalSend(msg)
     }
 
     transport.on('message', (msg: JsonRpcMessage) => {
-      logger.log(LogDirection.Incoming, msg, agentId)
+      const sid = (msg as any).params?.sessionId || null
+      logger.log(LogDirection.Incoming, msg, agentId, sid)
       console.log(`[${ts()}] [ACP incoming]`, JSON.stringify(msg))
     })
 

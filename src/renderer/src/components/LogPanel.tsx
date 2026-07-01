@@ -36,7 +36,11 @@ export default function LogPanel() {
       const acpApi = (window as any).acpApi
       if (acpApi?.logs?.query) {
         acpApi.logs.query({ sessionId: activeSessionId || undefined }).then((entries: any[]) => {
-          loadRawLogs(entries || [])
+          const parsed = (entries || []).map((e: any) => ({
+            ...e,
+            message: typeof e.message === 'string' ? (() => { try { return JSON.parse(e.message) } catch { return e.message } })() : e.message
+          }))
+          loadRawLogs(parsed)
         }).catch((err: any) => {
           console.error('[LogPanel] Failed to load log entries:', err)
         })

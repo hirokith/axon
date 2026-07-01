@@ -7,6 +7,7 @@ import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
 import { useChatStore, ChatMessage, MessageRole, ToolCallInfo } from '../stores/chatStore'
 import ToolCallCard from './ToolCallCard'
+import { copyToClipboard } from '../utils/clipboard'
 
 function useIsDark() {
   const [isDark, setIsDark] = useState(() => document.documentElement.getAttribute('data-theme') !== 'light')
@@ -25,12 +26,39 @@ function formatTime(ts: number): string {
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 }
 
+function formatElapsedTime(ms: number): string {
+  const totalSeconds = Math.floor(ms / 1000)
+  if (totalSeconds < 60) return `${totalSeconds}s`
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  return `${minutes}m${seconds.toString().padStart(2, '0')}s`
+}
+
+function AgentElapsedTimer({ startTime, isStreaming, endTime }: { startTime: number; isStreaming: boolean; endTime?: number }) {
+  const [now, setNow] = useState(Date.now())
+
+  useEffect(() => {
+    if (!isStreaming) return
+    const interval = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(interval)
+  }, [isStreaming])
+
+  const elapsed = isStreaming ? now - startTime : (endTime ? endTime - startTime : 0)
+  if (elapsed <= 0) return null
+
+  return (
+    <span className="text-[11px] text-text-subtle font-mono">
+      {formatElapsedTime(elapsed)}
+    </span>
+  )
+}
+
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false)
 
   const handleCopy = useCallback(async () => {
     try {
-      await navigator.clipboard.writeText(text)
+      await copyToClipboard(text)
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
     } catch { /* */ }
@@ -106,10 +134,22 @@ function ThoughtBlock({ text }: { text: string }) {
   )
 }
 
-const AgentGroup = memo(function AgentGroup({ items }: { items: ChatMessage[] }) {
+const AgentGroup = memo(function AgentGroup({ items, isStreaming }: { items: ChatMessage[]; isStreaming: boolean }) {
   const isDark = useIsDark()
   const combinedText = items.filter((m) => !m.isThought && m.text).map((m) => m.text).join('')
   const lastTimestamp = items[items.length - 1]?.timestamp
+  const firstTimestamp = items[0]?.timestamp
+  const computedEndTime = (() => {
+    let end = lastTimestamp || 0
+    for (const item of items) {
+      if (item.toolCalls) {
+        for (const tc of item.toolCalls) {
+          if (tc.endTime && tc.endTime > end) end = tc.endTime
+        }
+      }
+    }
+    return end
+  })()
 
   const segments: Array<{ type: 'thought'; text: string } | { type: 'msg'; msg: ChatMessage }> = []
   let thoughtBuf = ''
@@ -157,6 +197,9 @@ const AgentGroup = memo(function AgentGroup({ items }: { items: ChatMessage[] })
             <CopyButton text={combinedText} />
           </div>
         )}
+        <div className="ml-auto">
+          <AgentElapsedTimer startTime={firstTimestamp} isStreaming={isStreaming} endTime={computedEndTime} />
+        </div>
       </div>
 
       {segments.map((seg, si) =>
@@ -180,6 +223,7 @@ const AgentGroup = memo(function AgentGroup({ items }: { items: ChatMessage[] })
     </div>
   )
 }, (prev, next) => {
+  if (prev.isStreaming !== next.isStreaming) return false
   if (prev.items.length !== next.items.length) return false
   for (let i = 0; i < prev.items.length; i++) {
     const a = prev.items[i]
@@ -320,7 +364,7 @@ export default function MessageList() {
                 {group.type === 'user' ? (
                   <MessageBubble message={group.msg} />
                 ) : (
-                  <AgentGroup items={group.items} />
+                  <AgentGroup items={group.items} isStreaming={isPrompting && virtualItem.index === renderGroups.length - 1} />
                 )}
               </div>
             </div>

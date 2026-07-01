@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, clipboard } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import { IpcChannel } from '../shared/constants'
 
@@ -92,6 +92,10 @@ const acpApi = {
     return (): void => {
       ipcRenderer.removeListener('acp:turn-complete', listener)
     }
+  },
+  clipboard: {
+    writeText: (text: string) => clipboard.writeText(text),
+    readText: () => clipboard.readText()
   }
 }
 

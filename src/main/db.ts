@@ -163,7 +163,7 @@ export async function queryLogs(options: {
   const params: any[] = []
 
   if (options.sessionId) {
-    conditions.push('session_id = ?')
+    conditions.push('(session_id = ? OR session_id IS NULL)')
     params.push(options.sessionId)
   }
   if (options.agentId) {

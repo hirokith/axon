@@ -1,25 +1,6 @@
 import { create } from 'zustand'
 import { MessageRole, ToolCallStatus } from '@shared/constants'
 
-const MAX_RAW_SIZE = 10 * 1024 // 10KB
-
-function truncateRaw(value: any): any {
-  if (value === undefined || value === null) return value
-  let str: string
-  if (typeof value === 'string') {
-    str = value
-  } else {
-    try {
-      str = JSON.stringify(value) ?? String(value)
-    } catch {
-      const fallback = String(value)
-      return fallback.length <= MAX_RAW_SIZE ? fallback : fallback.slice(0, MAX_RAW_SIZE) + '...[truncated]'
-    }
-  }
-  if (str.length <= MAX_RAW_SIZE) return value
-  return str.slice(0, MAX_RAW_SIZE) + '...[truncated]'
-}
-
 export { MessageRole, ToolCallStatus }
 
 export interface ToolCallInfo {
@@ -301,7 +282,16 @@ export const useChatStore = create<ChatState>()((set, get) => ({
 
   switchSession: async (sessionId: string) => {
     const state = get()
-    if (state.activeSessionId === sessionId && state.activeMessages.length > 0 && !state.isLoadingMessages) return
+
+    // Merge any buffered messages even if already active
+    const pendingBuffer = inactiveBuffers.get(sessionId)
+    if (state.activeSessionId === sessionId && state.activeMessages.length > 0 && !state.isLoadingMessages) {
+      if (pendingBuffer && pendingBuffer.length > 0) {
+        inactiveBuffers.delete(sessionId)
+        set((s) => ({ activeMessages: [...s.activeMessages, ...pendingBuffer] }))
+      }
+      return
+    }
 
     // Flush current session's messages
     if (state.activeSessionId && state.activeMessages.length > 0) {
@@ -505,7 +495,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     set((s) => {
       const msgs = s.activeMessages
       const last = msgs[msgs.length - 1]
-      const tcWithTime = { ...tc, rawInput: truncateRaw(tc.rawInput), rawOutput: truncateRaw(tc.rawOutput), startTime: Date.now() }
+      const tcWithTime = { ...tc, startTime: Date.now() }
       if (last && last.role === MessageRole.Agent && !last.isThought && !last.text) {
         const toolCalls = [...(last.toolCalls || []), tcWithTime]
         const newMsgs = msgs.slice()
@@ -530,12 +520,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         if (idx === -1) return msg
         const toolCalls = [...msg.toolCalls]
         const endTime = (updates.status === ToolCallStatus.Completed || updates.status === ToolCallStatus.Failed) ? Date.now() : undefined
-        const truncatedUpdates = {
-          ...updates,
-          ...(updates.rawInput !== undefined ? { rawInput: truncateRaw(updates.rawInput) } : {}),
-          ...(updates.rawOutput !== undefined ? { rawOutput: truncateRaw(updates.rawOutput) } : {}),
-        }
-        toolCalls[idx] = { ...toolCalls[idx], ...truncatedUpdates, ...(endTime ? { endTime } : {}) }
+        toolCalls[idx] = { ...toolCalls[idx], ...updates, ...(endTime ? { endTime } : {}) }
         return { ...msg, toolCalls }
       })
       return { activeMessages: msgs }

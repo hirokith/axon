@@ -184,10 +184,18 @@ export function useAcpEvents(): void {
       if (existingTimer) {
         clearTimeout(existingTimer)
       }
+
+      // Ensure isPrompting stays true while events are flowing (TurnEnd/Done will set it false)
+      const isTurnEnd = update?.sessionUpdate === SessionUpdateKind.TurnEnd || update?.sessionUpdate === SessionUpdateKind.Done
+      if (!isTurnEnd) {
+        setIsPrompting(true, resolvedSid)
+      }
+
+      // Fallback safety timer: if no events arrive for 30s, assume turn ended
       turnTimersRef.current.set(resolvedSid, setTimeout(() => {
         setIsPrompting(false, resolvedSid)
         turnTimersRef.current.delete(resolvedSid)
-      }, 1500))
+      }, 30000))
 
       // Dispatch to chatStore with sessionId
       if (update) {

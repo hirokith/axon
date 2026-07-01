@@ -54,7 +54,7 @@ export default function ShikiCodeBlock({ label, content, maxHeight = 250 }: Shik
 
   const handleCopy = useCallback(async () => {
     try {
-      await navigator.clipboard.writeText(content)
+      await copyToClipboard(content)
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
     } catch { /* */ }
