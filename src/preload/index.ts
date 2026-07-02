@@ -9,8 +9,8 @@ const acpApi = {
   testConnection: (config: { command: string; args?: string[]; cwd?: string; env?: Record<string, string> }) =>
     ipcRenderer.invoke(IpcChannel.AcpTestConnection, config),
   createSession: (agentId: string, options?: { cwd?: string; mcpServers?: any[] }) => ipcRenderer.invoke(IpcChannel.AcpCreateSession, agentId, options),
-  sendPrompt: (agentId: string, sessionId: string, text: string, model?: string) =>
-    ipcRenderer.invoke(IpcChannel.AcpSendPrompt, agentId, sessionId, text, model),
+  sendPrompt: (agentId: string, sessionId: string, text: string, model?: string, imagePaths?: string[]) =>
+    ipcRenderer.invoke(IpcChannel.AcpSendPrompt, agentId, sessionId, text, model, imagePaths),
   cancelPrompt: (agentId: string, sessionId: string) =>
     ipcRenderer.invoke(IpcChannel.AcpCancelPrompt, agentId, sessionId),
   respondPermission: (agentId: string, id: number | string, outcome: string) =>
@@ -95,7 +95,8 @@ const acpApi = {
   },
   clipboard: {
     writeText: (text: string) => clipboard.writeText(text),
-    readText: () => clipboard.readText()
+    readText: () => clipboard.readText(),
+    saveImage: (pngBase64: string) => ipcRenderer.invoke(IpcChannel.ClipboardSaveImage, pngBase64),
   }
 }
 

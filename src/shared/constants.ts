@@ -33,6 +33,7 @@ export const IpcChannel = {
   SessionDelete: 'sessions:delete',
   SessionUpdateLabel: 'sessions:update-label',
   MessagesSync: 'messages:sync',
+  ClipboardSaveImage: 'clipboard:save-image',
 } as const
 
 export enum ToolCallStatus {

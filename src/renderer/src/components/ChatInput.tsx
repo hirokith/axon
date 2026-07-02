@@ -1,11 +1,17 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { Send, ChevronDown } from 'lucide-react'
+import { Send, ChevronDown, X } from 'lucide-react'
 import { useChatStore } from '../stores/chatStore'
+
+interface AttachedImage {
+  path: string
+  preview: string // base64 data URL for thumbnail
+}
 
 export default function ChatInput() {
   const [text, setText] = useState('')
   const [selectedModel, setSelectedModel] = useState<string>('')
   const [showModelDropdown, setShowModelDropdown] = useState(false)
+  const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([])
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const connectedAgents = useChatStore((s) => s.connectedAgents)
@@ -26,7 +32,7 @@ export default function ChatInput() {
   const availableModels = activeConnectedAgent?.models || []
 
   const isAgentConnected = !!activeConnectedAgent
-  const canSend = isAgentConnected && activeSessionId && text.trim() && !isPrompting
+  const canSend = isAgentConnected && activeSessionId && (text.trim() || attachedImages.length > 0) && !isPrompting
 
   // Auto-focus input when active session changes
   useEffect(() => {
@@ -53,18 +59,52 @@ export default function ChatInput() {
     setSelectedModel('')
   }, [activeAgentId])
 
+  const handlePaste = useCallback(async (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items
+    if (!items) return
+
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault()
+        const file = item.getAsFile()
+        if (!file) continue
+
+        const reader = new FileReader()
+        reader.onload = async () => {
+          const dataUrl = reader.result as string
+          const base64 = dataUrl.split(',')[1]
+          try {
+            const filePath = await (window as any).acpApi.clipboard.saveImage(base64)
+            setAttachedImages((prev) => [...prev, { path: filePath, preview: dataUrl }])
+          } catch (err) {
+            console.error('[ChatInput] Failed to save pasted image:', err)
+          }
+        }
+        reader.readAsDataURL(file)
+        break
+      }
+    }
+  }, [])
+
+  const removeImage = useCallback((index: number) => {
+    setAttachedImages((prev) => prev.filter((_, i) => i !== index))
+  }, [])
+
   const handleSend = useCallback(async () => {
     if (!canSend || !activeSessionId || !activeAgentId) return
     const prompt = text.trim()
+    const images = [...attachedImages]
     setText('')
+    setAttachedImages([])
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
     }
-    addUserMessage(prompt)
+    addUserMessage(prompt || (images.length > 0 ? `[${images.length} image(s)]` : ''), undefined, images.length > 0 ? images.map((img) => img.preview) : undefined)
     setIsPrompting(true)
     const model = selectedModel || (availableModels.length > 0 ? availableModels[0] : undefined)
+    const imagePaths = images.length > 0 ? images.map((img) => img.path) : undefined
     try {
-      await (window as any).acpApi.sendPrompt(activeAgentId, activeSessionId, prompt, model)
+      await (window as any).acpApi.sendPrompt(activeAgentId, activeSessionId, prompt, model, imagePaths)
     } catch (e: any) {
       const errMsg = e?.message || String(e)
       if (errMsg.toLowerCase().includes('not found')) {
@@ -72,7 +112,7 @@ export default function ChatInput() {
         try {
           const result = await (window as any).acpApi.createSession(activeAgentId)
           updateSessionId(activeSessionId, result.sessionId)
-          await (window as any).acpApi.sendPrompt(activeAgentId, result.sessionId, prompt, model)
+          await (window as any).acpApi.sendPrompt(activeAgentId, result.sessionId, prompt, model, imagePaths)
           return
         } catch (retryErr) {
           console.error('[ChatInput] Retry after recreate failed:', retryErr)
@@ -81,7 +121,7 @@ export default function ChatInput() {
       console.error('sendPrompt error:', e)
       setIsPrompting(false)
     }
-  }, [canSend, activeSessionId, activeAgentId, text, selectedModel, addUserMessage, setIsPrompting, updateSessionId])
+  }, [canSend, activeSessionId, activeAgentId, text, attachedImages, selectedModel, addUserMessage, setIsPrompting, updateSessionId])
 
   const handleCancel = useCallback(async () => {
     if (!activeSessionId || !activeAgentId) return
@@ -110,12 +150,32 @@ export default function ChatInput() {
   return (
     <div className="border-t border-border bg-sidebar-bg px-2 py-1.5">
       <div className="flex flex-col gap-1.5">
+        {attachedImages.length > 0 && (
+          <div className="flex gap-1.5 flex-wrap px-0.5">
+            {attachedImages.map((img, idx) => (
+              <div key={idx} className="relative group">
+                <img
+                  src={img.preview}
+                  alt="attached"
+                  className="w-14 h-14 object-cover rounded border border-border"
+                />
+                <button
+                  onClick={() => removeImage(idx)}
+                  className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-surface border border-border rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-error/20 hover:border-error/40"
+                >
+                  <X size={10} className="text-text-muted" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
         <textarea
           ref={textareaRef}
           value={text}
           onChange={handleInput}
           onKeyDown={handleKeyDown}
-          placeholder={isAgentConnected ? 'Message... (Enter to send)' : 'Connect to an agent first'}
+          onPaste={handlePaste}
+          placeholder={isAgentConnected ? 'Message... (Enter to send, paste image)' : 'Connect to an agent first'}
           disabled={!isAgentConnected || !activeSessionId}
           rows={3}
           className="flex-1 min-w-0 resize-none bg-surface border border-border text-text text-xs px-2 py-1.5 rounded-sm placeholder:text-text-subtle focus:outline-none focus:border-accent disabled:opacity-40 font-[inherit] leading-[1.4]"

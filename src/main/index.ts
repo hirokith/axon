@@ -238,7 +238,7 @@ function setupAcpHandlers(): void {
     return conn.client.createSession(cwd, mcpServers)
   })
 
-  ipcMain.handle(IpcChannel.AcpSendPrompt, async (_event, agentId: string, sessionId: string, text: string, model?: string) => {
+  ipcMain.handle(IpcChannel.AcpSendPrompt, async (_event, agentId: string, sessionId: string, text: string, model?: string, imagePaths?: string[]) => {
     const conn = connections.get(agentId)
     if (!conn) throw new Error('Not connected')
     if (model) {
@@ -252,7 +252,7 @@ function setupAcpHandlers(): void {
         }
       }
     }
-    await conn.client.sendPrompt(sessionId, text)
+    await conn.client.sendPrompt(sessionId, text, imagePaths)
     return { sent: true }
   })
 
@@ -363,6 +363,17 @@ app.whenReady().then(async () => {
     } catch {
       return null
     }
+  })
+
+  ipcMain.handle(IpcChannel.ClipboardSaveImage, async (_event, pngBase64: string) => {
+    const tmpDir = join(app.getPath('temp'), 'axon-images')
+    if (!fs.existsSync(tmpDir)) {
+      fs.mkdirSync(tmpDir, { recursive: true })
+    }
+    const filename = `paste-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`
+    const filePath = join(tmpDir, filename)
+    fs.writeFileSync(filePath, Buffer.from(pngBase64, 'base64'))
+    return filePath
   })
 
   // Static file server for HTML preview

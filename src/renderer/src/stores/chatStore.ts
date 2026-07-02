@@ -22,6 +22,7 @@ export interface ChatMessage {
   timestamp: number
   toolCalls?: ToolCallInfo[]
   isThought?: boolean
+  images?: string[]
 }
 
 export interface PermissionRequestInfo {
@@ -71,7 +72,7 @@ interface ChatState {
   updateSessionId: (oldSessionId: string, newSessionId: string) => void
   setPendingNewSessionAgentId: (agentId: string | null) => void
 
-  addUserMessage: (text: string, sessionId?: string) => void
+  addUserMessage: (text: string, sessionId?: string, images?: string[]) => void
   appendAgentText: (text: string, sessionId?: string) => void
   appendThoughtText: (text: string, sessionId?: string) => void
   addToolCall: (tc: ToolCallInfo, sessionId?: string) => void
@@ -386,7 +387,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     }
   },
 
-  addUserMessage: (text, sessionId?) => {
+  addUserMessage: (text, sessionId?, images?) => {
     const state = get()
     const targetSid = sessionId || state.activeSessionId
     if (!targetSid) return
@@ -394,7 +395,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     if (targetSid !== state.activeSessionId) {
       // Non-active session: buffer it
       const buffer = inactiveBuffers.get(targetSid) || []
-      buffer.push({ id: crypto.randomUUID(), role: MessageRole.User, text, timestamp: Date.now() })
+      buffer.push({ id: crypto.randomUUID(), role: MessageRole.User, text, timestamp: Date.now(), images })
       inactiveBuffers.set(targetSid, buffer)
       return
     }
@@ -405,7 +406,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
 
       const newMessages = [
         ...s.activeMessages,
-        { id: crypto.randomUUID(), role: MessageRole.User, text, timestamp: Date.now() },
+        { id: crypto.randomUUID(), role: MessageRole.User, text, timestamp: Date.now(), images },
       ]
 
       const updates: Partial<ChatState> = { activeMessages: newMessages }

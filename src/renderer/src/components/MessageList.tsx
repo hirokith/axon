@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback, useMemo, memo } from 'react'
+import { createPortal } from 'react-dom'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -84,6 +85,8 @@ function CopyButton({ text }: { text: string }) {
 }
 
 const MessageBubble = memo(function MessageBubble({ message }: { message: ChatMessage }) {
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
+
   return (
     <div className="group px-4 py-2 hover:bg-surface-hover/50 bg-accent/5 border-l-2 border-l-accent">
       <div className="flex items-center gap-2 mb-1">
@@ -93,7 +96,34 @@ const MessageBubble = memo(function MessageBubble({ message }: { message: ChatMe
           <CopyButton text={message.text} />
         </div>
       </div>
-      <div className="text-sm text-text whitespace-pre-wrap">{message.text}</div>
+      {message.images && message.images.length > 0 && (
+        <div className="flex gap-1.5 flex-wrap mb-1.5">
+          {message.images.map((src, i) => (
+            <img
+              key={i}
+              src={src}
+              alt=""
+              className="w-20 h-20 object-cover rounded border border-border cursor-pointer hover:opacity-80 transition-opacity"
+              onClick={() => setLightboxSrc(src)}
+            />
+          ))}
+        </div>
+      )}
+      {message.text && <div className="text-sm text-text whitespace-pre-wrap">{message.text}</div>}
+      {lightboxSrc && createPortal(
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm"
+          onClick={() => setLightboxSrc(null)}
+        >
+          <img
+            src={lightboxSrc}
+            alt=""
+            className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>,
+        document.body
+      )}
     </div>
   )
 })
