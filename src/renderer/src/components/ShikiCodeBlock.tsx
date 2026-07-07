@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { getHighlighter, detectLanguage } from '../utils/shikiHighlighter'
+import { copyToClipboard } from '../utils/clipboard'
 
 function useIsDark() {
   const [isDark, setIsDark] = useState(() => document.documentElement.getAttribute('data-theme') !== 'light')

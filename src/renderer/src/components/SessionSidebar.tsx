@@ -3,7 +3,9 @@ import { useChatStore, SessionMeta } from '../stores/chatStore'
 import { useAgentConfigStore } from '../stores/agentConfigStore'
 import { useMcpConfigStore } from '../stores/mcpConfigStore'
 import { McpTransport } from '@shared/constants'
-import { FolderOpen, Plus } from 'lucide-react'
+import { FolderOpen, Plus, ChevronDown } from 'lucide-react'
+
+const PAGE_SIZE = 15
 
 export default function SessionSidebar({ activeAgentId }: { activeAgentId: string | null }) {
   const connectedAgents = useChatStore((s) => s.connectedAgents)
@@ -25,6 +27,13 @@ export default function SessionSidebar({ activeAgentId }: { activeAgentId: strin
 
   const mcpServersAll = useMcpConfigStore((s) => s.servers)
   const fetchServers = useMcpConfigStore((s) => s.fetchServers)
+
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
+
+  // Reset visible count when switching agent tabs
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE)
+  }, [activeAgentId])
 
   // React to pending new session trigger (from connect)
   useEffect(() => {
@@ -97,7 +106,10 @@ export default function SessionSidebar({ activeAgentId }: { activeAgentId: strin
       { label: 'Earlier', sessions: [] },
     ]
 
+    // Only process up to visibleCount sessions
+    let remaining = visibleCount
     for (const s of activeAgentSessions) {
+      if (remaining <= 0) break
       const ts = s.createdAt
       if (ts >= todayStart) {
         groups[0].sessions.push(s)
@@ -106,10 +118,13 @@ export default function SessionSidebar({ activeAgentId }: { activeAgentId: strin
       } else {
         groups[2].sessions.push(s)
       }
+      remaining--
     }
 
     return groups.filter((g) => g.sessions.length > 0)
-  }, [activeAgentSessions])
+  }, [activeAgentSessions, visibleCount])
+
+  const hasMore = activeAgentSessions.length > visibleCount
 
   if (!activeAgentId && sessionMetas.length === 0 && !showNewDialog) return null
 
@@ -189,6 +204,15 @@ export default function SessionSidebar({ activeAgentId }: { activeAgentId: strin
               ))}
             </div>
           ))}
+          {hasMore && (
+            <button
+              onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
+              className="flex items-center justify-center gap-1 w-full py-2 text-[10px] text-text-muted hover:text-accent"
+            >
+              <ChevronDown size={12} />
+              <span>Load More ({activeAgentSessions.length - visibleCount} remaining)</span>
+            </button>
+          )}
         </div>
       </div>
 

@@ -218,7 +218,7 @@ export default function Settings() {
         )}
       </div>
 
-      {showForm && (
+      {showForm && !editingId && (
         <form onSubmit={handleSubmit} className="mb-4 p-3 border border-border rounded-sm bg-sidebar-bg space-y-2.5">
           <div>
             <label className="block text-[10px] text-text-muted uppercase tracking-wide mb-0.5">Name</label>
@@ -250,7 +250,7 @@ export default function Settings() {
           </div>
           <div>
             <label className="block text-[10px] text-text-muted uppercase tracking-wide mb-0.5">Environment Variables</label>
-            <textarea value={form.env} onChange={e => setForm({ ...form, env: e.target.value })} className={`${inputClass} resize-none`} rows={3} placeholder="KEY=value" />
+            <textarea value={form.env} onChange={e => setForm({ ...form, env: e.target.value })} className={`${inputClass} resize-y`} rows={3} placeholder="KEY=value" />
           </div>
           <div className="pt-1">
             <button
@@ -270,7 +270,7 @@ export default function Settings() {
           </div>
           <div className="flex gap-2 pt-1">
             <button type="submit" className="px-3 py-1 text-xs bg-accent text-panel-bg rounded-sm hover:opacity-90 font-medium">
-              {editingId ? 'Update' : 'Add'}
+              Add
             </button>
             <button type="button" onClick={handleCancel} className="px-3 py-1 text-xs text-text-muted border border-border rounded-sm hover:bg-surface-hover">
               Cancel
@@ -286,44 +286,106 @@ export default function Settings() {
       ) : (
         <div className="space-y-1">
           {agents.map(agent => (
-            <div key={agent.id} className="group flex items-center justify-between px-3 py-2 border border-border rounded-sm bg-sidebar-bg hover:bg-surface-hover transition-colors">
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const willDisable = agent.enabled !== false
-                    updateAgent(agent.id, { enabled: !willDisable })
-                    if (willDisable) {
-                      const connected = useChatStore.getState().connectedAgents
-                      if (connected.some((c) => c.agentId === agent.id)) {
-                        ;(window as any).acpApi.disconnect(agent.id).catch(() => {})
-                        useChatStore.getState().removeConnectedAgent(agent.id)
+            <div key={agent.id}>
+              <div className="group flex items-center justify-between px-3 py-2 border border-border rounded-sm bg-sidebar-bg hover:bg-surface-hover transition-colors">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const willDisable = agent.enabled !== false
+                      updateAgent(agent.id, { enabled: !willDisable })
+                      if (willDisable) {
+                        const connected = useChatStore.getState().connectedAgents
+                        if (connected.some((c) => c.agentId === agent.id)) {
+                          ;(window as any).acpApi.disconnect(agent.id).catch(() => {})
+                          useChatStore.getState().removeConnectedAgent(agent.id)
+                        }
                       }
-                    }
-                  }}
-                  className={`relative w-7 h-4 rounded-full transition-colors ${agent.enabled !== false ? 'bg-accent' : 'bg-border'}`}
-                >
-                  <span className={`absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white transition-transform ${agent.enabled !== false ? 'translate-x-3' : 'translate-x-0'}`} />
-                </button>
-                <div>
-                  <p className={`text-xs font-medium ${agent.enabled !== false ? 'text-text' : 'text-text-muted'}`}>{agent.name}</p>
-                  <p className="text-[11px] text-text-muted font-mono">{agent.command} {agent.args.join(' ')}</p>
+                    }}
+                    className={`relative w-7 h-4 rounded-full transition-colors ${agent.enabled !== false ? 'bg-accent' : 'bg-border'}`}
+                  >
+                    <span className={`absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white transition-transform ${agent.enabled !== false ? 'translate-x-3' : 'translate-x-0'}`} />
+                  </button>
+                  <div>
+                    <p className={`text-xs font-medium ${agent.enabled !== false ? 'text-text' : 'text-text-muted'}`}>{agent.name}</p>
+                    <p className="text-[11px] text-text-muted font-mono">{agent.command} {agent.args.join(' ')}</p>
+                  </div>
+                </div>
+                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button
+                    onClick={() => handleEdit(agent)}
+                    className="px-2 py-0.5 text-[10px] text-text-muted border border-border rounded-sm hover:border-accent hover:text-accent"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => handleDelete(agent.id)}
+                    className="px-2 py-0.5 text-[10px] text-text-muted border border-border rounded-sm hover:border-error hover:text-error"
+                  >
+                    Delete
+                  </button>
                 </div>
               </div>
-              <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button
-                  onClick={() => handleEdit(agent)}
-                  className="px-2 py-0.5 text-[10px] text-text-muted border border-border rounded-sm hover:border-accent hover:text-accent"
-                >
-                  Edit
-                </button>
-                <button
-                  onClick={() => handleDelete(agent.id)}
-                  className="px-2 py-0.5 text-[10px] text-text-muted border border-border rounded-sm hover:border-error hover:text-error"
-                >
-                  Delete
-                </button>
-              </div>
+              {editingId === agent.id && showForm && (
+                <form onSubmit={handleSubmit} className="mt-1 p-3 border border-accent/30 rounded-sm bg-sidebar-bg space-y-2.5">
+                  <div>
+                    <label className="block text-[10px] text-text-muted uppercase tracking-wide mb-0.5">Name</label>
+                    <input type="text" required value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className={inputClass} />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-text-muted uppercase tracking-wide mb-0.5">Command</label>
+                    <input type="text" required value={form.command} onChange={e => setForm({ ...form, command: e.target.value })} className={inputClass} />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-text-muted uppercase tracking-wide mb-0.5">Args (comma-separated)</label>
+                    <input type="text" value={form.args} onChange={e => setForm({ ...form, args: e.target.value })} className={inputClass} placeholder="--port, 3000" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-text-muted uppercase tracking-wide mb-0.5">Working Directory</label>
+                    <div className="flex gap-1">
+                      <input type="text" value={form.cwd} onChange={e => setForm({ ...form, cwd: e.target.value })} className={`${inputClass} flex-1`} placeholder="/path/to/dir" />
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const dir = await (window as any).acpApi.selectDirectory()
+                          if (dir) setForm({ ...form, cwd: dir })
+                        }}
+                        className="px-2 py-1 text-xs bg-panel-bg border border-border text-text-muted rounded-sm hover:text-text hover:border-accent transition-colors"
+                      >
+                        Browse
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-text-muted uppercase tracking-wide mb-0.5">Environment Variables</label>
+                    <textarea value={form.env} onChange={e => setForm({ ...form, env: e.target.value })} className={`${inputClass} resize-y`} rows={3} placeholder="KEY=value" />
+                  </div>
+                  <div className="pt-1">
+                    <button
+                      type="button"
+                      onClick={handleTestConnection}
+                      disabled={testingConnection || !form.command}
+                      className="w-full px-3 py-1.5 text-xs border border-border text-text rounded-sm hover:bg-surface-hover disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {testingConnection ? 'Testing...' : 'Test Connection'}
+                    </button>
+                    {testResult && (
+                      <div className={`mt-2 px-3 py-2 rounded-sm text-xs ${testResult.success ? 'bg-success/15 text-success' : 'bg-error/15 text-error'}`}>
+                        <span className="mr-1.5">{testResult.success ? '\u2705' : '\u274C'}</span>
+                        {testResult.message}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    <button type="submit" className="px-3 py-1 text-xs bg-accent text-panel-bg rounded-sm hover:opacity-90 font-medium">
+                      Update
+                    </button>
+                    <button type="button" onClick={handleCancel} className="px-3 py-1 text-xs text-text-muted border border-border rounded-sm hover:bg-surface-hover">
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              )}
             </div>
           ))}
         </div>
@@ -366,7 +428,7 @@ export default function Settings() {
           <textarea
             value={mcpJson}
             onChange={(e) => { setMcpJson(e.target.value); setMcpJsonError('') }}
-            className={`${inputClass} resize-none h-48 font-mono`}
+            className={`${inputClass} resize-y h-48 font-mono`}
             placeholder={`{\n  "mcpServers": {\n    "filesystem": {\n      "command": "npx",\n      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path"]\n    },\n    "remote-server": {\n      "url": "http://localhost:3000/mcp"\n    }\n  }\n}`}
           />
           {mcpJsonError && <p className="text-[10px] text-error">{mcpJsonError}</p>}
@@ -408,7 +470,7 @@ export default function Settings() {
               </div>
               <div>
                 <label className="block text-[10px] text-text-muted uppercase tracking-wide mb-0.5">Environment Variables</label>
-                <textarea value={mcpForm.env} onChange={e => setMcpForm({ ...mcpForm, env: e.target.value })} className={`${inputClass} resize-none`} rows={2} placeholder="KEY=value" />
+                <textarea value={mcpForm.env} onChange={e => setMcpForm({ ...mcpForm, env: e.target.value })} className={`${inputClass} resize-y`} rows={2} placeholder="KEY=value" />
               </div>
             </>
           ) : (

@@ -144,7 +144,7 @@ export default function ChatInput() {
     setText(e.target.value)
     const el = e.target
     el.style.height = 'auto'
-    el.style.height = Math.min(el.scrollHeight, 200) + 'px'
+    el.style.height = Math.min(el.scrollHeight, window.innerHeight * 0.5) + 'px'
   }
 
   return (
@@ -178,7 +178,7 @@ export default function ChatInput() {
           placeholder={isAgentConnected ? 'Message... (Enter to send, paste image)' : 'Connect to an agent first'}
           disabled={!isAgentConnected || !activeSessionId}
           rows={3}
-          className="flex-1 min-w-0 resize-none bg-surface border border-border text-text text-xs px-2 py-1.5 rounded-sm placeholder:text-text-subtle focus:outline-none focus:border-accent disabled:opacity-40 font-[inherit] leading-[1.4]"
+          className="flex-1 min-w-0 resize-y bg-surface border border-border text-text text-xs px-2 py-1.5 rounded-sm placeholder:text-text-subtle focus:outline-none focus:border-accent disabled:opacity-40 font-[inherit] leading-[1.4] min-h-[60px] max-h-[50vh]"
         />
         <div className="flex items-center justify-end gap-1.5">
           {availableModels.length > 0 && (

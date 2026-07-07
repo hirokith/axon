@@ -120,6 +120,9 @@ function flushActiveMessages() {
 // Buffer for messages targeting non-active sessions during streaming
 const inactiveBuffers = new Map<string, ChatMessage[]>()
 
+// Pending tool call updates for inactive sessions (targets tool calls already flushed to DB)
+const pendingToolCallUpdates = new Map<string, Map<string, Partial<ToolCallInfo>>>()
+
 // Microtask batching for streaming text appends
 let pendingAgentText = ''
 let pendingAgentTextScheduled = false
@@ -143,6 +146,72 @@ function flushInactiveBuffer(sessionId: string) {
     console.error('[chatStore] Failed to flush inactive buffer:', e)
   })
   inactiveBuffers.delete(sessionId)
+}
+
+// For inactive sessions: add a tool call
+function addToolCallToInactiveBuffer(sessionId: string, tc: ToolCallInfo) {
+  let buffer = inactiveBuffers.get(sessionId) || []
+  const last = buffer[buffer.length - 1]
+  if (last && last.role === MessageRole.Agent && !last.isThought && !last.text) {
+    buffer[buffer.length - 1] = { ...last, toolCalls: [...(last.toolCalls || []), tc] }
+  } else {
+    buffer.push({
+      id: crypto.randomUUID(),
+      role: MessageRole.Agent,
+      text: '',
+      timestamp: Date.now(),
+      toolCalls: [tc],
+    })
+  }
+  inactiveBuffers.set(sessionId, buffer)
+}
+
+// For inactive sessions: update a tool call
+function updateToolCallInInactiveBuffer(sessionId: string, toolCallId: string, updates: Partial<ToolCallInfo>) {
+  const endTime = (updates.status === ToolCallStatus.Completed || updates.status === ToolCallStatus.Failed) ? Date.now() : undefined
+  const patch = { ...updates, ...(endTime ? { endTime } : {}) }
+
+  // Try to find in inactive buffer first
+  const buffer = inactiveBuffers.get(sessionId)
+  if (buffer) {
+    for (const msg of buffer) {
+      if (!msg.toolCalls) continue
+      const idx = msg.toolCalls.findIndex((tc) => tc.toolCallId === toolCallId)
+      if (idx !== -1) {
+        msg.toolCalls[idx] = { ...msg.toolCalls[idx], ...patch }
+        return
+      }
+    }
+  }
+
+  // Not in buffer — must be in DB-flushed messages; queue for merge on switch back
+  let map = pendingToolCallUpdates.get(sessionId)
+  if (!map) {
+    map = new Map()
+    pendingToolCallUpdates.set(sessionId, map)
+  }
+  const existing = map.get(toolCallId) || {}
+  map.set(toolCallId, { ...existing, ...patch })
+}
+
+// Apply pending tool call updates to a messages array
+function applyPendingToolCallUpdates(sessionId: string, messages: ChatMessage[]): ChatMessage[] {
+  const map = pendingToolCallUpdates.get(sessionId)
+  if (!map || map.size === 0) return messages
+  pendingToolCallUpdates.delete(sessionId)
+  return messages.map((msg) => {
+    if (!msg.toolCalls) return msg
+    let changed = false
+    const toolCalls = msg.toolCalls.map((tc) => {
+      const patch = map.get(tc.toolCallId)
+      if (patch) {
+        changed = true
+        return { ...tc, ...patch }
+      }
+      return tc
+    })
+    return changed ? { ...msg, toolCalls } : msg
+  })
 }
 
 // For inactive sessions: append text or create message
@@ -289,7 +358,9 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     if (state.activeSessionId === sessionId && state.activeMessages.length > 0 && !state.isLoadingMessages) {
       if (pendingBuffer && pendingBuffer.length > 0) {
         inactiveBuffers.delete(sessionId)
-        set((s) => ({ activeMessages: [...s.activeMessages, ...pendingBuffer] }))
+        set((s) => ({ activeMessages: applyPendingToolCallUpdates(sessionId, [...s.activeMessages, ...pendingBuffer]) }))
+      } else {
+        set((s) => ({ activeMessages: applyPendingToolCallUpdates(sessionId, s.activeMessages) }))
       }
       return
     }
@@ -321,7 +392,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         toolCalls: r.toolCalls || undefined,
       }))
 
-      set({ activeMessages: [...messages, ...buffer], isLoadingMessages: false })
+      set({ activeMessages: applyPendingToolCallUpdates(sessionId, [...messages, ...buffer]), isLoadingMessages: false })
     } catch (e) {
       console.error('[chatStore] switchSession load failed:', e)
       if (get().activeSessionId === sessionId) {
@@ -491,7 +562,11 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   addToolCall: (tc, sessionId?) => {
     const state = get()
     const targetSid = sessionId || state.activeSessionId
-    if (!targetSid || targetSid !== state.activeSessionId) return
+    if (!targetSid) return
+    if (targetSid !== state.activeSessionId) {
+      addToolCallToInactiveBuffer(targetSid, { ...tc, startTime: Date.now() })
+      return
+    }
 
     set((s) => {
       const msgs = s.activeMessages
@@ -512,7 +587,11 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   updateToolCall: (toolCallId, updates, sessionId?) => {
     const state = get()
     const targetSid = sessionId || state.activeSessionId
-    if (!targetSid || targetSid !== state.activeSessionId) return
+    if (!targetSid) return
+    if (targetSid !== state.activeSessionId) {
+      updateToolCallInInactiveBuffer(targetSid, toolCallId, updates)
+      return
+    }
 
     set((s) => {
       const msgs = s.activeMessages.map((msg) => {

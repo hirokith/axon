@@ -1,7 +1,7 @@
 export async function copyToClipboard(text: string): Promise<void> {
   const acpApi = (window as any).acpApi
   if (acpApi?.clipboard?.writeText) {
-    acpApi.clipboard.writeText(text)
+    await acpApi.clipboard.writeText(text)
     return
   }
 
