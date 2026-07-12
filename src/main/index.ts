@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, ipcMain, dialog, nativeImage } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, nativeImage } from 'electron'
 import { join } from 'path'
 import * as fs from 'fs'
 import * as http from 'http'
@@ -63,13 +63,22 @@ function createWindow(): void {
     icon: join(__dirname, '../../build/icon.png'),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
+      sandbox: false,
+      webviewTag: true
     }
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
+    mainWindow!.webContents.send('open-url', details.url)
     return { action: 'deny' }
+  })
+
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    const currentUrl = mainWindow!.webContents.getURL()
+    if (url !== currentUrl) {
+      event.preventDefault()
+      mainWindow!.webContents.send('open-url', url)
+    }
   })
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {

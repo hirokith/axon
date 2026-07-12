@@ -97,6 +97,13 @@ const acpApi = {
     writeText: (text: string) => clipboard.writeText(text),
     readText: () => clipboard.readText(),
     saveImage: (pngBase64: string) => ipcRenderer.invoke(IpcChannel.ClipboardSaveImage, pngBase64),
+  },
+  onOpenUrl: (callback: (url: string) => void) => {
+    const listener = (_event: any, url: string): void => callback(url)
+    ipcRenderer.on('open-url', listener)
+    return (): void => {
+      ipcRenderer.removeListener('open-url', listener)
+    }
   }
 }
 

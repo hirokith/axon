@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import Settings from './components/Settings'
 import Chat from './components/Chat'
 import LogPanel from './components/LogPanel'
+import BrowserPanel from './components/BrowserPanel'
 import { useAcpEvents } from './hooks/useAcpEvents'
 import { useAgentConfigStore } from './stores/agentConfigStore'
 import { useChatStore } from './stores/chatStore'
@@ -55,12 +56,19 @@ function App(): JSX.Element {
   const [connectingAgents, setConnectingAgents] = useState<Set<string>>(new Set())
   const [failedAgents, setFailedAgents] = useState<Set<string>>(new Set())
   const [dbReady, setDbReady] = useState(false)
+  const [browserUrl, setBrowserUrl] = useState<string | null>(null)
 
   useAcpEvents()
 
   useEffect(() => {
     fetchAgents()
     initFromDb().then(() => setDbReady(true))
+  }, [])
+
+  useEffect(() => {
+    return (window as any).acpApi.onOpenUrl((url: string) => {
+      setBrowserUrl(url)
+    })
   }, [])
 
   // Auto-connect agents on startup
@@ -226,7 +234,9 @@ function App(): JSX.Element {
 
       {/* Main content */}
       <div className="flex-1 overflow-hidden">
-        {view === 'settings' ? (
+        {browserUrl ? (
+          <BrowserPanel url={browserUrl} onClose={() => setBrowserUrl(null)} />
+        ) : view === 'settings' ? (
           <div className="h-full overflow-auto">
             <Settings />
           </div>
