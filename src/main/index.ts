@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, ipcMain, dialog, nativeImage } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, nativeImage } from 'electron'
 import { join } from 'path'
 import * as fs from 'fs'
 import * as http from 'http'
@@ -63,13 +63,22 @@ function createWindow(): void {
     icon: join(__dirname, '../../build/icon.png'),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
+      sandbox: false,
+      webviewTag: true
     }
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
+    mainWindow!.webContents.send('open-url', details.url)
     return { action: 'deny' }
+  })
+
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    const currentUrl = mainWindow!.webContents.getURL()
+    if (url !== currentUrl) {
+      event.preventDefault()
+      mainWindow!.webContents.send('open-url', url)
+    }
   })
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
@@ -117,13 +126,15 @@ function setupAcpHandlers(): void {
     // Wrap transport send to log outgoing messages
     const originalSend = transport.send.bind(transport)
     transport.send = (msg: JsonRpcMessage) => {
-      logger.log(LogDirection.Outgoing, msg, agentId)
+      const sid = (msg as any).params?.sessionId || null
+      logger.log(LogDirection.Outgoing, msg, agentId, sid)
       console.log(`[${ts()}] [ACP outgoing]`, JSON.stringify(msg))
       originalSend(msg)
     }
 
     transport.on('message', (msg: JsonRpcMessage) => {
-      logger.log(LogDirection.Incoming, msg, agentId)
+      const sid = (msg as any).params?.sessionId || null
+      logger.log(LogDirection.Incoming, msg, agentId, sid)
       console.log(`[${ts()}] [ACP incoming]`, JSON.stringify(msg))
     })
 
@@ -236,7 +247,7 @@ function setupAcpHandlers(): void {
     return conn.client.createSession(cwd, mcpServers)
   })
 
-  ipcMain.handle(IpcChannel.AcpSendPrompt, async (_event, agentId: string, sessionId: string, text: string, model?: string) => {
+  ipcMain.handle(IpcChannel.AcpSendPrompt, async (_event, agentId: string, sessionId: string, text: string, model?: string, imagePaths?: string[]) => {
     const conn = connections.get(agentId)
     if (!conn) throw new Error('Not connected')
     if (model) {
@@ -250,7 +261,7 @@ function setupAcpHandlers(): void {
         }
       }
     }
-    await conn.client.sendPrompt(sessionId, text)
+    await conn.client.sendPrompt(sessionId, text, imagePaths)
     return { sent: true }
   })
 
@@ -361,6 +372,17 @@ app.whenReady().then(async () => {
     } catch {
       return null
     }
+  })
+
+  ipcMain.handle(IpcChannel.ClipboardSaveImage, async (_event, pngBase64: string) => {
+    const tmpDir = join(app.getPath('temp'), 'axon-images')
+    if (!fs.existsSync(tmpDir)) {
+      fs.mkdirSync(tmpDir, { recursive: true })
+    }
+    const filename = `paste-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`
+    const filePath = join(tmpDir, filename)
+    fs.writeFileSync(filePath, Buffer.from(pngBase64, 'base64'))
+    return filePath
   })
 
   // Static file server for HTML preview

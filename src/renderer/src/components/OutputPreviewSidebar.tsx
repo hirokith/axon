@@ -312,7 +312,8 @@ function HtmlPreview({ filePath, cwd }: { filePath: string; cwd: string }) {
     <iframe
       src={iframeUrl}
       className="w-full h-full border-0"
-      sandbox="allow-scripts allow-forms allow-same-origin"
+      sandbox="allow-scripts allow-forms allow-same-origin allow-popups"
+      allow="clipboard-write"
       title="HTML Preview"
     />
   )
@@ -518,11 +519,12 @@ function FileTree({ cwd, onFileClick }: { cwd: string; onFileClick: (path: strin
         <div
           className="fixed z-50 bg-surface border border-border rounded shadow-lg py-1 min-w-[160px]"
           style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={(e) => e.stopPropagation()}
         >
           <button
             className="w-full text-left px-3 py-1 text-xs text-text hover:bg-surface-hover"
             onClick={() => {
-              navigator.clipboard.writeText(contextMenu.path)
+              copyToClipboard(contextMenu.path)
               setContextMenu(null)
             }}
           >

@@ -132,12 +132,17 @@ export class AcpClient extends EventEmitter {
     return this.sendRequest('session/set_config_option', { sessionId, configId, value })
   }
 
-  sendPrompt(sessionId: string, text: string): Promise<void> {
+  sendPrompt(sessionId: string, text: string, imagePaths?: string[]): Promise<void> {
     return new Promise((resolve, reject) => {
       const id = this.nextId++
+      let finalText = text
+      if (imagePaths && imagePaths.length > 0) {
+        const pathList = imagePaths.map((p) => `  - ${p}`).join('\n')
+        finalText = `${text}\n\n[Attached images]\n${pathList}`
+      }
       const params: any = {
         sessionId,
-        prompt: [{ type: 'text', text }]
+        prompt: [{ type: 'text', text: finalText }]
       }
       const request: JsonRpcRequest = {
         jsonrpc: '2.0',

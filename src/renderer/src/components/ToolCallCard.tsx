@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from 'react'
 import { ToolCallInfo } from '../stores/chatStore'
 import { ToolCallStatus } from '@shared/constants'
 import ShikiCodeBlock from './ShikiCodeBlock'
+import { copyToClipboard } from '../utils/clipboard'
 
 const statusColors: Record<string, string> = {
   [ToolCallStatus.Pending]: 'text-warning',
@@ -56,12 +57,17 @@ function formatInput(data: any): string {
   return JSON.stringify(data, null, 2)
 }
 
+const UI_TRUNCATE_SIZE = 10 * 1024 // 10KB
+
 function CodeBlock({ label, content, maxHeight = 250 }: { label: string; content: string; maxHeight?: number }) {
   const [copied, setCopied] = useState(false)
+  const [showFull, setShowFull] = useState(false)
+  const isTruncated = content.length > UI_TRUNCATE_SIZE
+  const displayContent = isTruncated && !showFull ? content.slice(0, UI_TRUNCATE_SIZE) + '\n...[truncated]' : content
 
   const handleCopy = useCallback(async () => {
     try {
-      await navigator.clipboard.writeText(content)
+      await copyToClipboard(content)
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
     } catch { /* */ }
@@ -71,15 +77,22 @@ function CodeBlock({ label, content, maxHeight = 250 }: { label: string; content
     <div>
       <div className="flex items-center justify-between mb-0.5">
         <span className="text-xs text-text-subtle uppercase tracking-wide">{label}</span>
-        <button onClick={handleCopy} className="text-xs text-text-subtle hover:text-text-muted transition-colors">
-          {copied ? '✓' : 'copy'}
-        </button>
+        <div className="flex items-center gap-2">
+          {isTruncated && (
+            <button onClick={() => setShowFull(!showFull)} className="text-xs text-text-subtle hover:text-text-muted transition-colors">
+              {showFull ? 'collapse' : 'show full'}
+            </button>
+          )}
+          <button onClick={handleCopy} className="text-xs text-text-subtle hover:text-text-muted transition-colors">
+            {copied ? '✓' : 'copy'}
+          </button>
+        </div>
       </div>
       <pre
         className="bg-panel-bg border border-border text-text text-xs p-2 overflow-auto whitespace-pre-wrap break-words font-mono leading-relaxed rounded-sm"
-        style={{ maxHeight }}
+        style={{ maxHeight: showFull ? undefined : maxHeight }}
       >
-        {content}
+        {displayContent}
       </pre>
     </div>
   )
@@ -93,13 +106,17 @@ function formatEndTime(ts: number): string {
   return `${hh}:${mm}:${ss}`
 }
 
-export default function ToolCallCard({ toolCall, index }: { toolCall: ToolCallInfo; index?: number }) {
+export default function ToolCallCard({ toolCall, index, prevEndTime }: { toolCall: ToolCallInfo; index?: number; prevEndTime?: number }) {
   const [expanded, setExpanded] = useState(false)
   const statusClass = statusColors[toolCall.status] || 'text-text-muted'
   const isRunning = toolCall.status === 'pending' || toolCall.status === 'in_progress'
   const duration = toolCall.startTime && toolCall.endTime
     ? toolCall.endTime - toolCall.startTime
     : undefined
+  const waitTime = prevEndTime && toolCall.startTime
+    ? toolCall.startTime - prevEndTime
+    : undefined
+  const showWaitTime = waitTime != null && waitTime > 10000
 
   const inputText = formatInput(toolCall.rawInput)
   const outputText = formatOutput(toolCall.rawOutput)
@@ -125,13 +142,16 @@ export default function ToolCallCard({ toolCall, index }: { toolCall: ToolCallIn
         </span>
         {isRunning && toolCall.startTime && <ElapsedTimer startTime={toolCall.startTime} />}
         {isRunning && <LoadingDots />}
+        {!isRunning && showWaitTime && (
+          <span className="text-[10px] text-text-subtle font-mono" title="等待耗时">⏳{formatDuration(waitTime)}</span>
+        )}
         {!isRunning && duration != null && (
-          <span className="text-[10px] text-text-subtle font-mono">{formatDuration(duration)}</span>
+          <span className="text-[10px] text-text-subtle font-mono" title="执行耗时">⚡️{formatDuration(duration)}</span>
         )}
         {!isRunning && toolCall.endTime && (
           <span className="text-[10px] text-text-subtle font-mono">{formatEndTime(toolCall.endTime)}</span>
         )}
-        {!isRunning && <span className={`text-xs ${statusClass}`}>{toolCall.status === ToolCallStatus.Completed ? '✓' : '✗'}</span>}
+        {!isRunning && (toolCall.status === ToolCallStatus.Failed || toolCall.rawOutput?.success === false) && <span className="text-xs text-error">✗</span>}
         <span className="text-text-subtle">{expanded ? '▴' : '▾'}</span>
       </button>
       {expanded && (

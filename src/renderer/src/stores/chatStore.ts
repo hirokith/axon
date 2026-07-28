@@ -1,25 +1,6 @@
 import { create } from 'zustand'
 import { MessageRole, ToolCallStatus } from '@shared/constants'
 
-const MAX_RAW_SIZE = 10 * 1024 // 10KB
-
-function truncateRaw(value: any): any {
-  if (value === undefined || value === null) return value
-  let str: string
-  if (typeof value === 'string') {
-    str = value
-  } else {
-    try {
-      str = JSON.stringify(value) ?? String(value)
-    } catch {
-      const fallback = String(value)
-      return fallback.length <= MAX_RAW_SIZE ? fallback : fallback.slice(0, MAX_RAW_SIZE) + '...[truncated]'
-    }
-  }
-  if (str.length <= MAX_RAW_SIZE) return value
-  return str.slice(0, MAX_RAW_SIZE) + '...[truncated]'
-}
-
 export { MessageRole, ToolCallStatus }
 
 export interface ToolCallInfo {
@@ -41,6 +22,7 @@ export interface ChatMessage {
   timestamp: number
   toolCalls?: ToolCallInfo[]
   isThought?: boolean
+  images?: string[]
 }
 
 export interface PermissionRequestInfo {
@@ -90,7 +72,7 @@ interface ChatState {
   updateSessionId: (oldSessionId: string, newSessionId: string) => void
   setPendingNewSessionAgentId: (agentId: string | null) => void
 
-  addUserMessage: (text: string, sessionId?: string) => void
+  addUserMessage: (text: string, sessionId?: string, images?: string[]) => void
   appendAgentText: (text: string, sessionId?: string) => void
   appendThoughtText: (text: string, sessionId?: string) => void
   addToolCall: (tc: ToolCallInfo, sessionId?: string) => void
@@ -138,6 +120,9 @@ function flushActiveMessages() {
 // Buffer for messages targeting non-active sessions during streaming
 const inactiveBuffers = new Map<string, ChatMessage[]>()
 
+// Pending tool call updates for inactive sessions (targets tool calls already flushed to DB)
+const pendingToolCallUpdates = new Map<string, Map<string, Partial<ToolCallInfo>>>()
+
 // Microtask batching for streaming text appends
 let pendingAgentText = ''
 let pendingAgentTextScheduled = false
@@ -161,6 +146,72 @@ function flushInactiveBuffer(sessionId: string) {
     console.error('[chatStore] Failed to flush inactive buffer:', e)
   })
   inactiveBuffers.delete(sessionId)
+}
+
+// For inactive sessions: add a tool call
+function addToolCallToInactiveBuffer(sessionId: string, tc: ToolCallInfo) {
+  let buffer = inactiveBuffers.get(sessionId) || []
+  const last = buffer[buffer.length - 1]
+  if (last && last.role === MessageRole.Agent && !last.isThought && !last.text) {
+    buffer[buffer.length - 1] = { ...last, toolCalls: [...(last.toolCalls || []), tc] }
+  } else {
+    buffer.push({
+      id: crypto.randomUUID(),
+      role: MessageRole.Agent,
+      text: '',
+      timestamp: Date.now(),
+      toolCalls: [tc],
+    })
+  }
+  inactiveBuffers.set(sessionId, buffer)
+}
+
+// For inactive sessions: update a tool call
+function updateToolCallInInactiveBuffer(sessionId: string, toolCallId: string, updates: Partial<ToolCallInfo>) {
+  const endTime = (updates.status === ToolCallStatus.Completed || updates.status === ToolCallStatus.Failed) ? Date.now() : undefined
+  const patch = { ...updates, ...(endTime ? { endTime } : {}) }
+
+  // Try to find in inactive buffer first
+  const buffer = inactiveBuffers.get(sessionId)
+  if (buffer) {
+    for (const msg of buffer) {
+      if (!msg.toolCalls) continue
+      const idx = msg.toolCalls.findIndex((tc) => tc.toolCallId === toolCallId)
+      if (idx !== -1) {
+        msg.toolCalls[idx] = { ...msg.toolCalls[idx], ...patch }
+        return
+      }
+    }
+  }
+
+  // Not in buffer — must be in DB-flushed messages; queue for merge on switch back
+  let map = pendingToolCallUpdates.get(sessionId)
+  if (!map) {
+    map = new Map()
+    pendingToolCallUpdates.set(sessionId, map)
+  }
+  const existing = map.get(toolCallId) || {}
+  map.set(toolCallId, { ...existing, ...patch })
+}
+
+// Apply pending tool call updates to a messages array
+function applyPendingToolCallUpdates(sessionId: string, messages: ChatMessage[]): ChatMessage[] {
+  const map = pendingToolCallUpdates.get(sessionId)
+  if (!map || map.size === 0) return messages
+  pendingToolCallUpdates.delete(sessionId)
+  return messages.map((msg) => {
+    if (!msg.toolCalls) return msg
+    let changed = false
+    const toolCalls = msg.toolCalls.map((tc) => {
+      const patch = map.get(tc.toolCallId)
+      if (patch) {
+        changed = true
+        return { ...tc, ...patch }
+      }
+      return tc
+    })
+    return changed ? { ...msg, toolCalls } : msg
+  })
 }
 
 // For inactive sessions: append text or create message
@@ -301,7 +352,18 @@ export const useChatStore = create<ChatState>()((set, get) => ({
 
   switchSession: async (sessionId: string) => {
     const state = get()
-    if (state.activeSessionId === sessionId && state.activeMessages.length > 0 && !state.isLoadingMessages) return
+
+    // Merge any buffered messages even if already active
+    const pendingBuffer = inactiveBuffers.get(sessionId)
+    if (state.activeSessionId === sessionId && state.activeMessages.length > 0 && !state.isLoadingMessages) {
+      if (pendingBuffer && pendingBuffer.length > 0) {
+        inactiveBuffers.delete(sessionId)
+        set((s) => ({ activeMessages: applyPendingToolCallUpdates(sessionId, [...s.activeMessages, ...pendingBuffer]) }))
+      } else {
+        set((s) => ({ activeMessages: applyPendingToolCallUpdates(sessionId, s.activeMessages) }))
+      }
+      return
+    }
 
     // Flush current session's messages
     if (state.activeSessionId && state.activeMessages.length > 0) {
@@ -330,7 +392,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         toolCalls: r.toolCalls || undefined,
       }))
 
-      set({ activeMessages: [...messages, ...buffer], isLoadingMessages: false })
+      set({ activeMessages: applyPendingToolCallUpdates(sessionId, [...messages, ...buffer]), isLoadingMessages: false })
     } catch (e) {
       console.error('[chatStore] switchSession load failed:', e)
       if (get().activeSessionId === sessionId) {
@@ -396,7 +458,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     }
   },
 
-  addUserMessage: (text, sessionId?) => {
+  addUserMessage: (text, sessionId?, images?) => {
     const state = get()
     const targetSid = sessionId || state.activeSessionId
     if (!targetSid) return
@@ -404,7 +466,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     if (targetSid !== state.activeSessionId) {
       // Non-active session: buffer it
       const buffer = inactiveBuffers.get(targetSid) || []
-      buffer.push({ id: crypto.randomUUID(), role: MessageRole.User, text, timestamp: Date.now() })
+      buffer.push({ id: crypto.randomUUID(), role: MessageRole.User, text, timestamp: Date.now(), images })
       inactiveBuffers.set(targetSid, buffer)
       return
     }
@@ -415,7 +477,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
 
       const newMessages = [
         ...s.activeMessages,
-        { id: crypto.randomUUID(), role: MessageRole.User, text, timestamp: Date.now() },
+        { id: crypto.randomUUID(), role: MessageRole.User, text, timestamp: Date.now(), images },
       ]
 
       const updates: Partial<ChatState> = { activeMessages: newMessages }
@@ -500,12 +562,16 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   addToolCall: (tc, sessionId?) => {
     const state = get()
     const targetSid = sessionId || state.activeSessionId
-    if (!targetSid || targetSid !== state.activeSessionId) return
+    if (!targetSid) return
+    if (targetSid !== state.activeSessionId) {
+      addToolCallToInactiveBuffer(targetSid, { ...tc, startTime: Date.now() })
+      return
+    }
 
     set((s) => {
       const msgs = s.activeMessages
       const last = msgs[msgs.length - 1]
-      const tcWithTime = { ...tc, rawInput: truncateRaw(tc.rawInput), rawOutput: truncateRaw(tc.rawOutput), startTime: Date.now() }
+      const tcWithTime = { ...tc, startTime: Date.now() }
       if (last && last.role === MessageRole.Agent && !last.isThought && !last.text) {
         const toolCalls = [...(last.toolCalls || []), tcWithTime]
         const newMsgs = msgs.slice()
@@ -521,7 +587,11 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   updateToolCall: (toolCallId, updates, sessionId?) => {
     const state = get()
     const targetSid = sessionId || state.activeSessionId
-    if (!targetSid || targetSid !== state.activeSessionId) return
+    if (!targetSid) return
+    if (targetSid !== state.activeSessionId) {
+      updateToolCallInInactiveBuffer(targetSid, toolCallId, updates)
+      return
+    }
 
     set((s) => {
       const msgs = s.activeMessages.map((msg) => {
@@ -530,12 +600,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         if (idx === -1) return msg
         const toolCalls = [...msg.toolCalls]
         const endTime = (updates.status === ToolCallStatus.Completed || updates.status === ToolCallStatus.Failed) ? Date.now() : undefined
-        const truncatedUpdates = {
-          ...updates,
-          ...(updates.rawInput !== undefined ? { rawInput: truncateRaw(updates.rawInput) } : {}),
-          ...(updates.rawOutput !== undefined ? { rawOutput: truncateRaw(updates.rawOutput) } : {}),
-        }
-        toolCalls[idx] = { ...toolCalls[idx], ...truncatedUpdates, ...(endTime ? { endTime } : {}) }
+        toolCalls[idx] = { ...toolCalls[idx], ...updates, ...(endTime ? { endTime } : {}) }
         return { ...msg, toolCalls }
       })
       return { activeMessages: msgs }

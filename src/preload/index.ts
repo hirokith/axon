@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, clipboard } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import { IpcChannel } from '../shared/constants'
 
@@ -9,8 +9,8 @@ const acpApi = {
   testConnection: (config: { command: string; args?: string[]; cwd?: string; env?: Record<string, string> }) =>
     ipcRenderer.invoke(IpcChannel.AcpTestConnection, config),
   createSession: (agentId: string, options?: { cwd?: string; mcpServers?: any[] }) => ipcRenderer.invoke(IpcChannel.AcpCreateSession, agentId, options),
-  sendPrompt: (agentId: string, sessionId: string, text: string, model?: string) =>
-    ipcRenderer.invoke(IpcChannel.AcpSendPrompt, agentId, sessionId, text, model),
+  sendPrompt: (agentId: string, sessionId: string, text: string, model?: string, imagePaths?: string[]) =>
+    ipcRenderer.invoke(IpcChannel.AcpSendPrompt, agentId, sessionId, text, model, imagePaths),
   cancelPrompt: (agentId: string, sessionId: string) =>
     ipcRenderer.invoke(IpcChannel.AcpCancelPrompt, agentId, sessionId),
   respondPermission: (agentId: string, id: number | string, outcome: string) =>
@@ -91,6 +91,18 @@ const acpApi = {
     ipcRenderer.on('acp:turn-complete', listener)
     return (): void => {
       ipcRenderer.removeListener('acp:turn-complete', listener)
+    }
+  },
+  clipboard: {
+    writeText: (text: string) => clipboard.writeText(text),
+    readText: () => clipboard.readText(),
+    saveImage: (pngBase64: string) => ipcRenderer.invoke(IpcChannel.ClipboardSaveImage, pngBase64),
+  },
+  onOpenUrl: (callback: (url: string) => void) => {
+    const listener = (_event: any, url: string): void => callback(url)
+    ipcRenderer.on('open-url', listener)
+    return (): void => {
+      ipcRenderer.removeListener('open-url', listener)
     }
   }
 }

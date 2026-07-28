@@ -84,7 +84,6 @@ function classifySessionUpdate(data: any): StructuredLogEntry {
 export function useAcpEvents(): void {
   const addStructuredLog = useLogStore((s) => s.addStructuredLog)
   const addRawLog = useLogStore((s) => s.addRawLog)
-  const loadRawLogs = useLogStore((s) => s.loadRawLogs)
 
   const removeConnectedAgent = useChatStore((s) => s.removeConnectedAgent)
   const appendAgentText = useChatStore((s) => s.appendAgentText)
@@ -154,15 +153,6 @@ export function useAcpEvents(): void {
       }
     }
 
-    // Load existing raw logs
-    acpApi.getLogEntries().then((entries: any[]) => {
-      if (entries && entries.length > 0) {
-        loadRawLogs(entries)
-      }
-    }).catch((err: any) => {
-      console.error('[useAcpEvents] Failed to load log entries:', err)
-    })
-
     // Subscribe to session updates - dispatch to both logStore and chatStore
     const unsubSession = acpApi.onSessionUpdate((params: any) => {
       const { update } = params
@@ -170,10 +160,11 @@ export function useAcpEvents(): void {
 
       // Add as structured log (in-memory + persist to SQLite)
       const structured = classifySessionUpdate(params)
-      addStructuredLog(structured)
+      const resolvedSessionId = sid || useChatStore.getState().activeSessionId || null
+      addStructuredLog({ ...structured, sessionId: resolvedSessionId })
       acpApi.structuredLogs?.insert({
         ...structured,
-        sessionId: sid || useChatStore.getState().activeSessionId || null
+        sessionId: resolvedSessionId
       }).catch(() => {})
 
       // Also add as raw log if it contains JSON-RPC message
@@ -182,7 +173,8 @@ export function useAcpEvents(): void {
           id: crypto.randomUUID(),
           timestamp: Date.now(),
           direction: params.direction || LogDirection.Incoming,
-          message: params.message || params
+          message: params.message || params,
+          sessionId: resolvedSessionId
         })
       }
 
@@ -192,10 +184,18 @@ export function useAcpEvents(): void {
       if (existingTimer) {
         clearTimeout(existingTimer)
       }
+
+      // Ensure isPrompting stays true while events are flowing (TurnEnd/Done will set it false)
+      const isTurnEnd = update?.sessionUpdate === SessionUpdateKind.TurnEnd || update?.sessionUpdate === SessionUpdateKind.Done
+      if (!isTurnEnd) {
+        setIsPrompting(true, resolvedSid)
+      }
+
+      // Fallback safety timer: if no events arrive for 30s, assume turn ended
       turnTimersRef.current.set(resolvedSid, setTimeout(() => {
         setIsPrompting(false, resolvedSid)
         turnTimersRef.current.delete(resolvedSid)
-      }, 1500))
+      }, 30000))
 
       // Dispatch to chatStore with sessionId
       if (update) {

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { getHighlighter, detectLanguage } from '../utils/shikiHighlighter'
+import { copyToClipboard } from '../utils/clipboard'
 
 function useIsDark() {
   const [isDark, setIsDark] = useState(() => document.documentElement.getAttribute('data-theme') !== 'light')
@@ -54,7 +55,7 @@ export default function ShikiCodeBlock({ label, content, maxHeight = 250 }: Shik
 
   const handleCopy = useCallback(async () => {
     try {
-      await navigator.clipboard.writeText(content)
+      await copyToClipboard(content)
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
     } catch { /* */ }
