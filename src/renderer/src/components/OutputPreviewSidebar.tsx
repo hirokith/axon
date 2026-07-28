@@ -519,6 +519,7 @@ function FileTree({ cwd, onFileClick }: { cwd: string; onFileClick: (path: strin
         <div
           className="fixed z-50 bg-surface border border-border rounded shadow-lg py-1 min-w-[160px]"
           style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={(e) => e.stopPropagation()}
         >
           <button
             className="w-full text-left px-3 py-1 text-xs text-text hover:bg-surface-hover"
